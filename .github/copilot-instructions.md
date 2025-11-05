@@ -7,6 +7,12 @@ This project aims to build a Python script tool that converts LaTeX documents to
 - Dependencies are recorded in `pyproject.toml`, not `requirements.txt`.
 - Always follow this when generating or modifying dependency code.
 
+## Python Environment
+- Always run Python scripts and tooling through the repository's local
+  virtual environment located at `.venv`.
+- Prefer commands like `.venv/bin/python`, `uv run`, or `.venv/bin/pytest`
+  rather than the system interpreter.
+
 ## Testing
 - Use **pytest** as the testing framework.
 - Write clear and maintainable test functions.

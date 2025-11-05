@@ -141,10 +141,14 @@ class TestPatternMatcher:
         content = "\\graphicspath{{figures/}}"
         result = PatternMatcher.extract_graphicspath(content)
         assert result == "figures/"
+        entries = PatternMatcher.extract_graphicspaths(content)
+        assert entries == ["figures/"]
         
         content_multi = "\\graphicspath{{figures/}{images/}}"
         result_multi = PatternMatcher.extract_graphicspath(content_multi)
         assert result_multi == "figures/"
+        entries_multi = PatternMatcher.extract_graphicspaths(content_multi)
+        assert entries_multi == ["figures/", "images/"]
 
 
 class TestTextProcessor:

@@ -51,7 +51,7 @@ class ContentModifier:
             figure_contents,
             figure_files,
             self.config.get_multifig_template(),
-            "multifig"
+            "fig"
         )
         
         # Replace table environments if enabled
@@ -60,7 +60,7 @@ class ContentModifier:
                 table_contents,
                 table_files,
                 TexTemplates.MODIFIED_TABENV,
-                "tab"
+                "tbl"
             )
         
         # Update graphics path

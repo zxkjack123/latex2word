@@ -157,28 +157,30 @@ converter.convert()
 
 ```shell
 pandoc texfile -o docxfile \
-    --lua-filter resolve_equation_labels.lua \
-    --filter pandoc-crossref \
-    --reference-doc=temp.docx \
-    --number-sections \
-    -M autoEqnLabels \
-    -M tableEqns \
-    -M reference-section-title=Reference \
-    --bibliography=ref.bib \
-    --citeproc --csl ieee.csl \
-    -t docx+native_numbering
+   --lua-filter resolve_equation_labels.lua \
+   --filter pandoc-crossref \
+   --reference-doc=temp.docx \
+   --metadata-file tex2docx/pandoc_crossref_metadata.yaml \
+   --number-sections \
+   -M autoEqnLabels \
+   -M tableEqns \
+   -M reference-section-title=References \
+   --bibliography=ref.bib \
+   --citeproc --csl ieee.csl \
+   -t docx
 ```
 
 其中，
 1. `--lua-filter resolve_equation_labels.lua` 处理公式编号及公式交叉引用，受 Constantin Ahlmann-Eltze 的[脚本](https://gist.githubusercontent.com/const-ae/752ad85c43d92b72865453ea3a77e2dd/raw/28c1815979e5d03cd9ab3638f9befd354797a72b/resolve_equation_labels.lua)启发；
 2. `--filter pandoc-crossref` 处理除公式以外的交叉引用；
-3. `--reference-doc=my_temp.docx` 依照 `my_temp.docx` 中的样式生成 Word 文件。本仓库提供了两个模板文件 `TIE-temp.docx` 和 `my_temp.docx`，前者是 TIE 期刊的投稿 Word 模板（双栏），后者是个人调整出的 Word 模板（单栏，且便于批注）；
-4. `--number-sections` 在（子）章节标题前添加数字编号；
-5. `-M autoEqnLabels`， `-M tableEqns`设置公式、表格等的编号；
-6. `-M reference-sction-title=Reference` 在参考文献部分添加章节标题 Reference；
-7. `--biblipgraphy=my_ref.bib` 使用 `ref.bib` 生成参考文献；
-8. `--citeproc --csl ieee.csl` 生成的参考文献格式为 `ieee` ；
-9. `-t docx+native_numbering` 优化图片和表格的 caption。
+3. `--metadata-file tex2docx/pandoc_crossref_metadata.yaml` 指定自定义 caption 模板，让编号直接写入生成的 Word 文档中；
+4. `--reference-doc=my_temp.docx` 依照 `my_temp.docx` 中的样式生成 Word 文件。本仓库提供了两个模板文件 `TIE-temp.docx` 和 `my_temp.docx`，前者是 TIE 期刊的投稿 Word 模板（双栏），后者是个人调整出的 Word 模板（单栏，且便于批注）；
+5. `--number-sections` 在（子）章节标题前添加数字编号；
+6. `-M autoEqnLabels`，`-M tableEqns` 设置公式、表格等的编号；
+7. `-M reference-section-title=References` 在参考文献部分添加章节标题 References；
+8. `--bibliography=my_ref.bib` 使用 `ref.bib` 生成参考文献；
+9. `--citeproc --csl ieee.csl` 生成的参考文献格式为 IEEE；
+10. `-t docx` 使用 Pandoc 默认的 DOCX 生成器输出文档。
 
 然而，上述方法对多子图转换效果不佳。
 本项目通过提取 LaTeX 文件中的多子图代码，并利用 LaTeX 的 `convert` 与 `pdftocairo` 工具自动编译这些图片为单一大图 PNG 文件。然后，这些 PNG 文件将替代原始 LaTeX 文档中的相应图片代码，并更新相关引用，确保多子图图片能顺利导入。
@@ -188,8 +190,15 @@ pandoc texfile -o docxfile \
 
 1. 中文的图表 caption 仍以 Fiugre 和 Table 开头；
 2. 作者信息无法完整转换。
+3. Word 文件中的交叉引用编号为静态文本。如需新增或删除图、表、公式，建议重新运行转换流程，而不是依赖 Word 自行刷新编号。
 
 ## 更新记录
+
+### v1.3.1
+
+1. 在导出的 DOCX 中直接写入图、表编号，避免重复前缀并保持引用准确。
+2. 改进 CLI 错误处理，可输出更明确的失败信息并返回正确的退出码。
+3. 新增 CLI 和编号回归测试，防止后续格式回归问题。
 
 ### v1.3.0
 
@@ -251,10 +260,11 @@ pandoc texfile -o docxfile \
 pandoc input.tex -o output.docx\
   --filter pandoc-crossref \
   --reference-doc=my_temp.docx \
+   --metadata-file tex2docx/pandoc_crossref_metadata.yaml \
   --number-sections \
   -M autoEqnLabels -M tableEqns \
-  -M reference-section-title=Reference \
+   -M reference-section-title=References \
   --bibliography=my_ref.bib \
   --citeproc --csl ieee.csl \
-  -t docx+native_numbering
+   -t docx
 ```

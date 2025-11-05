@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from .config import ConversionConfig
 from .constants import TexTemplates, CompilerOptions
+from .exceptions import ConfigurationError, FileNotFoundError
 from .utils import PatternMatcher, TextProcessor
 
 
@@ -32,6 +33,7 @@ class SubfileGenerator:
         # Storage for created files
         self.created_figure_files: Dict[int, str] = {}
         self.created_table_files: Dict[int, str] = {}
+        self._asset_search_roots = self._build_asset_search_roots()
     
     def generate_figure_subfiles(self, figure_contents: List[str]) -> None:
         """
@@ -40,10 +42,11 @@ class SubfileGenerator:
         Args:
             figure_contents: List of figure environment strings.
         """
+        self._validate_graphic_assets(figure_contents, "figure")
         self._generate_subfiles(
-            figure_contents, 
-            "multifig", 
-            self.created_figure_files
+            figure_contents,
+            "multifig",
+            self.created_figure_files,
         )
     
     def generate_table_subfiles(self, table_contents: List[str]) -> None:
@@ -53,16 +56,17 @@ class SubfileGenerator:
         Args:
             table_contents: List of table environment strings.
         """
+        self._validate_graphic_assets(table_contents, "table")
         self._generate_subfiles(
             table_contents,
             "tab",
-            self.created_table_files
+            self.created_table_files,
         )
     
     def _generate_subfiles(
-        self, 
-        content_list: List[str], 
-        prefix: str, 
+        self,
+        content_list: List[str],
+        prefix: str,
         storage_dict: Dict[int, str]
     ) -> None:
         """
@@ -80,9 +84,6 @@ class SubfileGenerator:
         default_counter = 0
         created_filenames = set(storage_dict.values())
         
-        # Calculate relative graphics path
-        graphicspath_rel = self._get_relative_graphicspath()
-        
         for index, item_content in enumerate(content_list):
             filename = self._generate_filename(
                 item_content, prefix, default_counter, created_filenames
@@ -92,22 +93,10 @@ class SubfileGenerator:
             created_filenames.add(filename)
             default_counter += 1
             
-            # Generate and write file content
-            self._write_subfile(item_content, filename, graphicspath_rel)
-    
-    def _get_relative_graphicspath(self) -> Path:
-        """Calculate relative graphics path from temp dir to original path."""
-        try:
-            graphicspath = Path(self.parser_results.get("graphicspath", "."))
-            rel_path_str = os.path.relpath(graphicspath, self.config.temp_subtexfile_dir)
-            return Path(rel_path_str)
-        except ValueError:
-            # Different drives on Windows
-            self.logger.warning(
-                "Graphics path and temp directory on different drives. "
-                "Using absolute graphics path."
+            graphicspath_entries = self._graphicspath_entries_for_content(
+                item_content
             )
-            return graphicspath.resolve()
+            self._write_subfile(item_content, filename, graphicspath_entries)
     
     def _generate_filename(
         self, 
@@ -136,7 +125,17 @@ class SubfileGenerator:
         if labels:
             base_name = labels[-1]
             # Clean common prefixes
-            for pfx in ["fig:", "fig-", "fig_", "tab:", "tab-", "tab_"]:
+            for pfx in [
+                "fig:",
+                "fig-",
+                "fig_",
+                "tab:",
+                "tab-",
+                "tab_",
+                "tbl:",
+                "tbl-",
+                "tbl_",
+            ]:
                 if base_name.startswith(pfx):
                     base_name = base_name[len(pfx):]
                     break
@@ -156,10 +155,10 @@ class SubfileGenerator:
         return filename
     
     def _write_subfile(
-        self, 
-        content: str, 
-        filename: str, 
-        graphicspath_rel: Path
+        self,
+        content: str,
+        filename: str,
+        graphicspath_entries: List[str],
     ) -> None:
         """
         Write a subfile to disk.
@@ -170,8 +169,8 @@ class SubfileGenerator:
             graphicspath_rel: Relative graphics path.
         """
         try:
-            file_content = self._generate_file_content(content, graphicspath_rel)
-            file_path = self.config.temp_subtexfile_dir / filename
+            file_content = self._generate_file_content(content, graphicspath_entries)
+            file_path = self._temp_directory() / filename
             
             with open(file_path, "w", encoding="utf-8") as file:
                 file.write(file_content)
@@ -187,7 +186,11 @@ class SubfileGenerator:
                 if stored_filename == filename:
                     del self.created_table_files[index]
     
-    def _generate_file_content(self, content: str, graphicspath_rel: Path) -> str:
+    def _generate_file_content(
+        self,
+        content: str,
+        graphicspath_entries: List[str],
+    ) -> str:
         """
         Generate the complete LaTeX file content for a subfile.
         
@@ -229,9 +232,9 @@ class SubfileGenerator:
             file_content = file_content.replace("% CJK_PACKAGE_PLACEHOLDER %\n", "")
         
         # Set graphics path
-        latex_graphicspath = str(graphicspath_rel.as_posix())
+        joined_paths = "}{".join(graphicspath_entries)
         file_content = file_content.replace(
-            "{GRAPHICSPATH_PLACEHOLDER}", latex_graphicspath
+            "{GRAPHICSPATH_PLACEHOLDER}", joined_paths
         )
         
         # Insert content
@@ -240,6 +243,196 @@ class SubfileGenerator:
         )
         
         return file_content
+
+    def _build_asset_search_roots(self) -> List[Path]:
+        """Determine directories to search for figure assets."""
+        roots: List[Path] = []
+        resolved = self.parser_results.get("graphicspaths") or []
+        for path_str in resolved:
+            try:
+                roots.append(Path(path_str).resolve())
+            except Exception:
+                self.logger.debug("Could not resolve graphicspath '%s'", path_str)
+
+        raw_entries = self.parser_results.get("graphicspath_entries") or []
+        include_dirs = [
+            Path(p).resolve()
+            for p in self.parser_results.get("include_directories", [])
+        ]
+        base_dirs = [self._input_directory(), *include_dirs]
+
+        for entry in raw_entries:
+            candidate = Path(entry)
+            if candidate.is_absolute():
+                roots.append(candidate.resolve())
+                continue
+            for base_dir in base_dirs:
+                roots.append((base_dir / candidate).resolve())
+
+        roots.extend(base_dirs)
+        seen: set[Path] = set()
+        unique_roots: List[Path] = []
+        for root in roots:
+            try:
+                resolved = root if root.is_absolute() else root.resolve()
+            except Exception:
+                resolved = root
+            if resolved not in seen:
+                unique_roots.append(resolved)
+                seen.add(resolved)
+        return unique_roots
+
+    def _validate_graphic_assets(
+        self,
+        content_list: List[str],
+        context: str,
+    ) -> None:
+        """Ensure all includegraphics assets referenced in content exist."""
+        if not content_list:
+            return
+
+        missing: List[str] = []
+        for index, content in enumerate(content_list):
+            image_paths = PatternMatcher.extract_includegraphics_paths(content)
+            if not image_paths:
+                continue
+            local_roots = self._resolve_local_graphicspaths(content)
+            search_roots = [*local_roots, *self._asset_search_roots]
+            for image_path in image_paths:
+                if not self._asset_exists(image_path, search_roots):
+                    descriptor = f"{context} #{index + 1}: {image_path}"
+                    missing.append(descriptor)
+
+        if missing:
+            details = "\n".join(f"  - {item}" for item in missing)
+            message = (
+                "Missing graphic assets detected before compilation:\n"
+                f"{details}\n"
+                "Ensure all referenced files exist in the graphics path."
+            )
+            raise FileNotFoundError(message)
+
+    def _asset_exists(
+        self,
+        asset_path: str,
+        search_roots: List[Path],
+    ) -> bool:
+        """Check whether a referenced graphic asset exists on disk."""
+        normalized = asset_path.strip()
+        if not normalized:
+            return True
+
+        latex_path = Path(normalized)
+        bases: List[Path] = []
+        if latex_path.is_absolute():
+            bases.append(latex_path)
+        else:
+            for root in search_roots:
+                bases.append(root / latex_path)
+
+        if latex_path.suffix:
+            candidates = bases
+        else:
+            candidates = []
+            for base in bases:
+                candidates.extend(
+                    base.with_suffix(ext)
+                    for ext in self._supported_image_extensions()
+                )
+
+        for candidate in candidates:
+            if candidate.exists():
+                return True
+        return False
+
+    @staticmethod
+    def _supported_image_extensions() -> Tuple[str, ...]:
+        """Return the set of image extensions LaTeX commonly resolves."""
+        return (
+            ".pdf",
+            ".PDF",
+            ".ai",
+            ".AI",
+            ".png",
+            ".PNG",
+            ".jpg",
+            ".JPG",
+            ".jpeg",
+            ".JPEG",
+            ".jp2",
+            ".JP2",
+            ".jpf",
+            ".JPF",
+            ".bmp",
+            ".BMP",
+            ".ps",
+            ".PS",
+            ".eps",
+            ".EPS",
+            ".mps",
+            ".MPS",
+        )
+
+    def _graphicspath_entries_for_content(self, content: str) -> List[str]:
+        """Compute graphicspath entries for a specific LaTeX environment."""
+        local_roots = self._resolve_local_graphicspaths(content)
+        combined_roots = [*local_roots, *self._asset_search_roots]
+        return self._format_graphicspath_entries(combined_roots)
+
+    def _format_graphicspath_entries(self, roots: List[Path]) -> List[str]:
+        """Convert directory paths into LaTeX graphicspath entries."""
+        temp_dir = self._temp_directory()
+        entries: List[str] = []
+        for root in roots:
+            try:
+                rel = Path(os.path.relpath(root, temp_dir))
+                value = rel.as_posix()
+            except ValueError:
+                value = root.as_posix()
+            if not value.endswith("/"):
+                value = f"{value}/"
+            if value not in entries:
+                entries.append(value)
+        return entries
+
+    def _resolve_local_graphicspaths(self, content: str) -> List[Path]:
+        """Resolve graphicspath commands defined inside an environment."""
+        entries = PatternMatcher.extract_graphicspaths(content)
+        if not entries:
+            return []
+
+        include_dirs = [
+            Path(path).resolve()
+            for path in self.parser_results.get("include_directories", [])
+        ]
+        base_dirs = [self._input_directory(), *include_dirs]
+        resolved: List[Path] = []
+        seen: set[Path] = set()
+        for entry in entries:
+            candidate = Path(entry)
+            if candidate.is_absolute():
+                path = candidate.resolve()
+                if path not in seen:
+                    resolved.append(path)
+                    seen.add(path)
+                continue
+            for base_dir in base_dirs:
+                path = (base_dir / candidate).resolve()
+                if path not in seen:
+                    resolved.append(path)
+                    seen.add(path)
+        return resolved
+
+    def _input_directory(self) -> Path:
+        """Return the directory containing the primary input TeX file."""
+        return Path(self.config.input_texfile).resolve().parent
+
+    def _temp_directory(self) -> Path:
+        """Return the configured temporary directory for subfiles."""
+        temp_dir = self.config.temp_subtexfile_dir
+        if temp_dir is None:
+            raise ConfigurationError("Temporary directory is not configured")
+        return temp_dir
 
 
 class SubfileCompiler:
@@ -275,46 +468,47 @@ class SubfileCompiler:
             self.logger.info("No subfiles to compile")
             return
         
-        # Get full paths
-        full_paths = [self.config.temp_subtexfile_dir / fname for fname in all_files]
-        
-        # Compile in parallel
+        temp_dir = self.config.temp_subtexfile_dir
+        if temp_dir is None:
+            raise ConfigurationError("Temporary directory is not configured")
+
+        full_paths = [temp_dir / fname for fname in all_files]
+
         successful, failed = self._compile_parallel(full_paths)
-        
+
         self.logger.info(
-            f"Compilation finished. Success: {successful}, Failed: {len(failed)}"
+            "Compilation finished. Success: %d, Failed: %d",
+            successful,
+            len(failed),
         )
         if failed:
-            self.logger.warning(f"Failed compilations: {', '.join(failed)}")
-    
+            self.logger.warning(
+                "Failed compilations: %s",
+                ", ".join(failed),
+            )
+
     def _compile_parallel(self, file_paths: List[Path]) -> Tuple[int, List[str]]:
-        """
-        Compile files in parallel using ProcessPoolExecutor.
-        
-        Args:
-            file_paths: List of TeX file paths to compile.
-            
-        Returns:
-            Tuple of (successful_count, failed_filenames).
-        """
+        """Compile files in parallel using ProcessPoolExecutor."""
         successful_count = 0
-        failed_files = []
-        
+        failed_files: List[str] = []
+
         max_workers = min(CompilerOptions.MAX_WORKERS, len(file_paths))
-        
-        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=max_workers
+        ) as executor:
             futures = {
                 executor.submit(self._compile_single_file, path): path
                 for path in file_paths
             }
-            
+
             progress = tqdm(
                 concurrent.futures.as_completed(futures),
                 total=len(futures),
                 desc="Compiling subfiles",
-                unit="file"
+                unit="file",
             )
-            
+
             for future in progress:
                 file_path = futures[future]
                 try:
@@ -323,10 +517,14 @@ class SubfileCompiler:
                         successful_count += 1
                     else:
                         failed_files.append(file_path.name)
-                except Exception as e:
-                    self.logger.error(f"Compilation exception for {file_path.name}: {e}")
+                except Exception as exc:
+                    self.logger.error(
+                        "Compilation exception for %s: %s",
+                        file_path.name,
+                        exc,
+                    )
                     failed_files.append(file_path.name)
-        
+
         return successful_count, failed_files
     
     @staticmethod

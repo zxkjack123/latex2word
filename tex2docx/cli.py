@@ -1,6 +1,9 @@
-import typer
-from tex2docx import LatexToWordConverter
 import shutil
+
+import typer
+
+from tex2docx import LatexToWordConverter
+from tex2docx.exceptions import Tex2DocxError
 
 app = typer.Typer()
 
@@ -8,26 +11,43 @@ app = typer.Typer()
 # Subcommand for conversion
 @app.command("convert")
 def convert(
-    input_texfile: str = typer.Option(..., help="The path to the input LaTeX file."),
+    input_texfile: str = typer.Option(
+        ...,
+        help="The path to the input LaTeX file.",
+    ),
     output_docxfile: str = typer.Option(
-        ..., help="The path to the output Word document."
+        ...,
+        help="The path to the output Word document.",
     ),
     reference_docfile: str = typer.Option(
         None,
-        help="The path to the reference Word document. Defaults to None (use the built-in default_temp.docx file).",
+        help=(
+            "The path to the reference Word document. Defaults to None "
+            "(use the built-in default_temp.docx file)."
+        ),
     ),
     bibfile: str = typer.Option(
         None,
-        help="The path to the BibTeX file. Defaults to None (use the first .bib file found in the same directory as input_texfile).",
+        help=(
+            "The path to the BibTeX file. Defaults to None (use the first "
+            ".bib file found in the same directory as input_texfile)."
+        ),
     ),
     cslfile: str = typer.Option(
         None,
-        help="The path to the CSL file. Defaults to None (use the built-in ieee.csl file).",
+        help=(
+            "The path to the CSL file. Defaults to None (use the "
+            "built-in ieee.csl file)."
+        ),
     ),
     fix_table: bool = typer.Option(
-        True, help="Whether to fix tables with png. Defaults to True."
+        True,
+        help="Whether to fix tables with png. Defaults to True.",
     ),
-    debug: bool = typer.Option(False, help="Enable debug mode. Defaults to False."),
+    debug: bool = typer.Option(
+        False,
+        help="Enable debug mode. Defaults to False.",
+    ),
 ):
     """Convert LaTeX to Word with the given options."""
     converter = LatexToWordConverter(
@@ -39,7 +59,24 @@ def convert(
         fix_table=fix_table,
         debug=debug,
     )
-    converter.convert()
+
+    try:
+        converter.convert()
+    except Tex2DocxError as exc:
+        typer.secho(
+            f"Conversion failed: {exc}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:  # pragma: no cover
+        typer.secho(
+            "Unexpected error during conversion. Enable --debug for details.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
 
 
 # Subcommand for downloading dependencies #TODO(Hua)
@@ -53,7 +90,8 @@ def download():
         raise typer.Exit(code=1)
     if not shutil.which("pandoc-crossref"):
         typer.echo(
-            "Pandoc-crossref is not installed. Please install Pandoc-crossref first."
+            "Pandoc-crossref is not installed. Please install "
+            "Pandoc-crossref first."
         )
         raise typer.Exit(code=1)
 

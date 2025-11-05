@@ -1,0 +1,6 @@
+figureTemplate: "Figure $$i$$$$titleDelim$$ $$t$$"
+tableTemplate: "Table $$i$$$$titleDelim$$ $$t$$"
+figureTitle: ""
+tableTitle: ""
+figPrefix: ""
+tblPrefix: ""

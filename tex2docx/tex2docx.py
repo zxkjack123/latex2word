@@ -16,9 +16,9 @@ from .subfile import SubfileGenerator, SubfileCompiler
 class LatexToWordConverter:
     """
     Main class for converting LaTeX documents to Word documents.
-    
-    This is a refactored version with improved modularity, separation of concerns,
-    and better error handling.
+
+    This refactored version improves modularity, separates concerns,
+    and provides better error handling.
     """
     
     def __init__(
@@ -78,7 +78,9 @@ class LatexToWordConverter:
         # Log initial configuration
         self.config.log_paths(self.logger)
         
-        self.logger.debug("LatexToWordConverter initialized with modular architecture")
+        self.logger.debug(
+            "LatexToWordConverter initialized with modular architecture"
+        )
     
     def convert(self) -> None:
         """
@@ -88,7 +90,8 @@ class LatexToWordConverter:
         specialized components for each stage.
         """
         file_manager = FileManager(self.config)
-        
+        conversion_failed = False
+
         try:
             self.logger.info("Starting LaTeX to Word conversion process")
             
@@ -104,7 +107,10 @@ class LatexToWordConverter:
             
             # Step 3: Generate and compile subfiles
             self.logger.info("Step 3: Generating and compiling subfiles")
-            subfile_gen = SubfileGenerator(self.config, parser.get_analysis_summary())
+            subfile_gen = SubfileGenerator(
+                self.config,
+                parser.get_analysis_summary(),
+            )
             subfile_gen.generate_figure_subfiles(parser.figure_contents)
             
             if self.config.fix_table:
@@ -135,18 +141,25 @@ class LatexToWordConverter:
             pandoc_converter.convert_to_docx()
             
             self.logger.info("Conversion process completed successfully")
-            
+
         except Tex2DocxError as e:
-            # Handle known errors from our package
+            conversion_failed = True
             self.logger.error(f"Conversion failed: {e}")
-            # Don't cleanup on error so user can inspect files
+            raise
         except Exception as e:
-            # Handle unexpected errors
-            self.logger.error(f"Conversion failed due to unexpected error: {e}", exc_info=True)
-            # Don't cleanup on error
+            conversion_failed = True
+            self.logger.error(
+                "Conversion failed due to unexpected error: %s",
+                e,
+                exc_info=True,
+            )
+            raise
         finally:
-            # Step 6: Cleanup (unless in debug mode or there was an error)
-            if file_manager.should_cleanup():
+            if conversion_failed:
+                file_manager.log_temp_file_locations(
+                    "Skipping cleanup due to conversion failure."
+                )
+            elif file_manager.should_cleanup():
                 file_manager.cleanup_temp_files()
             else:
                 file_manager.log_temp_file_locations()

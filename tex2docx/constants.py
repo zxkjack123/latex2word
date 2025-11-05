@@ -1,5 +1,6 @@
 """Constants and patterns used throughout the tex2docx package."""
 
+from pathlib import Path
 from typing import Final
 
 
@@ -12,8 +13,11 @@ class TexPatterns:
     CAPTION: Final[str] = r"\\caption\{([^{}]*(?:\{(?1)\}[^{}]*)*)\}"
     LABEL: Final[str] = r"\\label\{(.*?)\}"
     REF: Final[str] = r"\\ref\{(.*?)\}"
-    GRAPHICSPATH: Final[str] = r"\\graphicspath\{\{(.+?)\}\}"
+    GRAPHICSPATH: Final[str] = r"\\graphicspath\{((?:\s*\{[^{}]+\}\s*)+)\}"
     INCLUDEGRAPHICS: Final[str] = r"\\includegraphics(?s:.*?)\}"
+    INCLUDEGRAPHICS_PATH: Final[str] = (
+        r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}"
+    )
     COMMENT: Final[str] = r"((?<!\\)%.*\n)"
     SUBFIG_PACKAGE: Final[str] = r"\\usepackage\{subfig\}"
     SUBFIGURE_PACKAGE: Final[str] = r"\\usepackage\{subfigure\}"
@@ -29,7 +33,11 @@ class TexTemplates:
     """LaTeX template strings."""
     
     BASE_MULTIFIG_TEXFILE: Final[str] = r"""
-\documentclass[preview,convert,convert={outext=.png,command=\unexpanded{pdftocairo -r 500 -png \infile}}]{standalone}
+\documentclass[
+    preview,
+    convert,
+    convert={outext=.png,command=\unexpanded{pdftocairo -r 500 -png \infile}}
+]{standalone}
 \usepackage{graphicx}
 % FIGURE_PACKAGE_PLACEHOLDER %
 \usepackage{booktabs}
@@ -80,7 +88,7 @@ class PandocOptions:
         "--number-sections",
         "-M", "autoEqnLabels",
         "-M", "tableEqns",
-        "-t", "docx+native_numbering",
+        "-t", "docx",
     ]
     
     FILTER_OPTIONS: Final[list[str]] = [
@@ -92,14 +100,19 @@ class PandocOptions:
         "--citeproc",
     ]
 
+    METADATA_FILE: Final[Path] = Path(__file__).with_name(
+        "pandoc_crossref_metadata.yaml"
+    )
+
 
 class CompilerOptions:
     """Options for LaTeX compilation."""
     
     XELATEX_OPTIONS: Final[list[str]] = [
         "-shell-escape",
-        "-synctex=1", 
+        "-synctex=1",
         "-interaction=nonstopmode",
     ]
-    
-    MAX_WORKERS: Final[int] = 4  # Default number of parallel compilation workers
+
+    # Default number of parallel compilation workers used for XeLaTeX.
+    MAX_WORKERS: Final[int] = 4

@@ -81,6 +81,16 @@ class PandocConverter:
         command.extend([
             "--reference-doc", str(self.config.reference_docfile.resolve())
         ])
+
+        metadata_file = PandocOptions.METADATA_FILE
+        if not metadata_file.exists():
+            raise FileNotFoundError(
+                f"Pandoc metadata file not found: {metadata_file}"
+            )
+        command.extend([
+            "--metadata-file",
+            str(metadata_file.resolve()),
+        ])
         
         # Add basic options
         command.extend(PandocOptions.BASIC_OPTIONS)

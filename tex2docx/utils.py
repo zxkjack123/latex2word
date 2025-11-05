@@ -74,23 +74,40 @@ class PatternMatcher:
         return bool(regex.search(TexPatterns.CHINESE_CHAR, content))
     
     @staticmethod
-    def extract_graphicspath(content: str) -> Optional[str]:
-        """
-        Extract the graphics path from LaTeX content.
-        
-        Args:
-            content: The LaTeX content to search.
-            
-        Returns:
-            The graphics path if found, None otherwise.
-        """
-        match = PatternMatcher.match_pattern(
-            TexPatterns.GRAPHICSPATH, content, mode="last"
+    def extract_graphicspaths(content: str) -> List[str]:
+        r"""Return directories listed in the latest ``\graphicspath``."""
+        matches = PatternMatcher.match_pattern(
+            TexPatterns.GRAPHICSPATH,
+            content,
+            mode="last",
         )
-        if match and isinstance(match, str):
-            # Handle multiple paths if present, taking the first one
-            return match.split('}{')[0]
-        return None
+        if not matches:
+            return []
+
+        raw_block = matches
+        if isinstance(raw_block, list):
+            raw_block = raw_block[-1]
+
+        directories = regex.findall(r"\{([^{}]+)\}", raw_block)
+        clean_paths = [
+            directory.strip()
+            for directory in directories
+            if directory.strip()
+        ]
+        return clean_paths
+
+    @staticmethod
+    def extract_graphicspath(content: str) -> Optional[str]:
+        r"""Return the first directory from the most recent
+        ``\graphicspath`` command."""
+        paths = PatternMatcher.extract_graphicspaths(content)
+        return paths[0] if paths else None
+
+    @staticmethod
+    def extract_includegraphics_paths(content: str) -> List[str]:
+        """Extract image paths referenced by \\includegraphics commands."""
+        matches = regex.findall(TexPatterns.INCLUDEGRAPHICS_PATH, content)
+        return [m.strip() for m in matches if m.strip()]
 
 
 class TextProcessor:
@@ -153,7 +170,7 @@ class TextProcessor:
         """
         from .constants import FilenamePatterns
         return regex.sub(
-            FilenamePatterns.INVALID_CHARS, 
-            FilenamePatterns.REPLACEMENT_CHAR, 
+            FilenamePatterns.INVALID_CHARS,
+            FilenamePatterns.REPLACEMENT_CHAR,
             filename
         )

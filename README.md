@@ -152,27 +152,29 @@ This project relies on Pandoc and Pandoc-Crossref to convert LaTeX files to Word
 
 ```shell
 pandoc texfile -o docxfile \
-    --lua-filter resolve_equation_labels.lua \
-    --filter pandoc-crossref \
-    --reference-doc=temp.docx \
-    --number-sections \
-    -M autoEqnLabels \
-    -M tableEqns \
-    -M reference-section-title=Reference \
-    --bibliography=ref.bib \
-    --citeproc --csl ieee.csl \
-    -t docx+native_numbering
+   --lua-filter resolve_equation_labels.lua \
+   --filter pandoc-crossref \
+   --reference-doc=temp.docx \
+   --metadata-file tex2docx/pandoc_crossref_metadata.yaml \
+   --number-sections \
+   -M autoEqnLabels \
+   -M tableEqns \
+   -M reference-section-title=References \
+   --bibliography=ref.bib \
+   --citeproc --csl ieee.csl \
+   -t docx
 ```
 
 1. `--lua-filter resolve_equation_labels.lua` handles equation numbering and cross-references, inspired by [Constantin Ahlmann-Eltze's script](https://gist.github.com/const-ae/752ad85c43d92b72865453ea3a77e2dd).
 2. `--filter pandoc-crossref` handles cross-references for other elements.
-3. `--reference-doc=my_temp.docx` applies the styles from `my_temp.docx` to the generated Word file. Two template files are included: `TIE-temp.docx` (for TIE journal submission, double-column format) and `my_temp.docx` (single-column, designed for easier annotation).
-4. `--number-sections` adds numbering to section headings.
-5. `-M autoEqnLabels`, `-M tableEqns` enable automatic numbering of equations and tables.
-6. `-M reference-section-title=Reference` adds a section title for references.
-7. `--bibliography=my_ref.bib` generates the bibliography from `ref.bib`.
-8. `--citeproc --csl ieee.csl` formats citations and the bibliography using the IEEE citation style.
-9. `-t docx+native_numbering` improves captions for images and tables.
+3. `--metadata-file tex2docx/pandoc_crossref_metadata.yaml` injects custom caption templates so numbering is embedded directly in the generated DOCX.
+4. `--reference-doc=my_temp.docx` applies the styles from `my_temp.docx` to the generated Word file. Two template files are included: `TIE-temp.docx` (for TIE journal submission, double-column format) and `my_temp.docx` (single-column, designed for easier annotation).
+5. `--number-sections` adds numbering to section headings.
+6. `-M autoEqnLabels`, `-M tableEqns` enable automatic numbering of equations and tables.
+7. `-M reference-section-title=References` adds a section title for references.
+8. `--bibliography=my_ref.bib` generates the bibliography from `ref.bib`.
+9. `--citeproc --csl ieee.csl` formats citations and the bibliography using the IEEE citation style.
+10. `-t docx` outputs a Word document using Pandoc's standard DOCX writer.
 
 The conversion for multi-figure LaTeX content may not be perfect. This project extracts multi-figure code from the LaTeX file and uses the `convert` and `pdftocairo` tools to compile the figures into a single large PNG file, replacing the original LaTeX image code and updating references to ensure smooth import into Word.
 
@@ -180,8 +182,20 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
 
 1. Captions for figures and tables in Chinese still start with "Figure" and "Table".
 2. Author information is not fully converted.
+3. Cross-reference numbering in the DOCX output is static. After adding or
+   removing figures, tables, or equations in Word, rerun the converter instead
+   of relying on Word to refresh the numbers.
 
 ## Changelog
+
+### v1.3.1
+
+1. Embedded figure and table numbering directly in DOCX captions to prevent
+   duplicate prefixes and ensure references stay accurate.
+2. Improved CLI error handling to surface actionable conversion failures and
+   return proper exit codes.
+3. Added CLI coverage and numbering regression tests to guard against future
+   formatting regressions.
 
 ### v1.3.0
 
@@ -241,12 +255,13 @@ There are two kinds of people: those who use LaTeX and those who don't. The latt
 
 ```bash
 pandoc input.tex -o output.docx\
-  --filter pandoc-crossref \
-  --reference-doc=my_temp.docx \
-  --number-sections \
-  -M autoEqnLabels -M tableEqns \
-  -M reference-section-title=Reference \
-  --bibliography=my_ref.bib \
-  --citeproc --csl ieee.csl \
-  -t docx+native_numbering
+   --filter pandoc-crossref \
+   --reference-doc=my_temp.docx \
+   --metadata-file tex2docx/pandoc_crossref_metadata.yaml \
+   --number-sections \
+   -M autoEqnLabels -M tableEqns \
+   -M reference-section-title=References \
+   --bibliography=my_ref.bib \
+   --citeproc --csl ieee.csl \
+   -t docx
 ```

@@ -474,7 +474,17 @@ class LatexToWordConverter:
             if labels:
                 base_filename = labels[-1]
                 # Clean common prefixes (fig:, tab:, etc.)
-                for pfx in ["fig:", "fig-", "fig_", "tab:", "tab-", "tab_"]:
+                for pfx in [
+                    "fig:",
+                    "fig-",
+                    "fig_",
+                    "tab:",
+                    "tab-",
+                    "tab_",
+                    "tbl:",
+                    "tbl-",
+                    "tbl_",
+                ]:
                     if base_filename.startswith(pfx):
                         base_filename = base_filename[len(pfx):]
                         break

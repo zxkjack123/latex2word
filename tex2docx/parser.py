@@ -22,6 +22,7 @@ class LatexParser:
         """
         self.config = config
         self.logger = config.setup_logger()
+        self.input_file = Path(self.config.input_texfile)
         
         # Content state
         self.raw_content: Optional[str] = None
@@ -29,17 +30,28 @@ class LatexParser:
         self.figure_contents: List[str] = []
         self.table_contents: List[str] = []
         self.graphicspath: Optional[Path] = None
+        self.graphicspaths: List[Path] = []
+        self.graphicspath_entries: List[str] = []
+        self.include_directories: List[Path] = []
         self.figure_package: Optional[str] = None
         self.contains_chinese: bool = False
     
     def read_and_preprocess(self) -> None:
         """Read the main TeX file and handle includes and comments."""
         try:
-            with open(self.config.input_texfile, "r", encoding="utf-8") as file:
+            with open(
+                self.input_file,
+                "r",
+                encoding="utf-8",
+            ) as file:
                 self.raw_content = file.read()
-            self.logger.info(f"Read {self.config.input_texfile.name}")
+            self.logger.info("Read %s", self.input_file.name)
         except Exception as e:
-            self.logger.error(f"Error reading input file {self.config.input_texfile}: {e}")
+            self.logger.error(
+                "Error reading input file %s: %s",
+                self.input_file,
+                e,
+            )
             raise ParseError(f"Could not read input file: {e}")
         
         # Remove comments first
@@ -78,21 +90,36 @@ class LatexParser:
                     continue
                 
                 include_filename = self._get_include_filename(include_name)
-                include_file_path = self.config.input_texfile.parent / include_filename
+                include_file_path = self.input_file.parent / include_filename
                 
                 if include_file_path.exists():
-                    include_content = self._read_include_file(include_file_path)
+                    include_content = self._read_include_file(
+                        include_file_path
+                    )
                     if include_content is not None:
-                        content = content.replace(include_directive, include_content, 1)
-                        self.logger.debug(f"Included content from {include_filename}")
+                        content = content.replace(
+                            include_directive,
+                            include_content,
+                            1,
+                        )
+                        self.logger.debug(
+                            "Included content from %s",
+                            include_filename,
+                        )
                         made_replacement = True
                         processed_in_pass.add(include_directive)
+                        self._register_include_directory(
+                            include_file_path.parent
+                        )
                 else:
-                    self.logger.warning(f"Include file not found: {include_file_path}")
+                    self.logger.warning(
+                        "Include file not found: %s",
+                        include_file_path,
+                    )
                     content = content.replace(
-                        include_directive, 
-                        f"% Include file not found: {include_filename} %", 
-                        1
+                        include_directive,
+                        f"% Include file not found: {include_filename} %",
+                        1,
                     )
                     processed_in_pass.add(include_directive)
             
@@ -124,7 +151,11 @@ class LatexParser:
             # Remove comments from included file before inserting
             return TextProcessor.remove_comments(include_content)
         except Exception as e:
-            self.logger.warning(f"Could not read include file {file_path}: {e}")
+            self.logger.warning(
+                "Could not read include file %s: %s",
+                file_path,
+                e,
+            )
             return f"% Error including {file_path.name} %"
     
     def analyze_structure(self) -> None:
@@ -136,42 +167,67 @@ class LatexParser:
         figure_matches = PatternMatcher.match_pattern(
             TexPatterns.FIGURE, self.clean_content, mode="all"
         )
-        self.figure_contents = figure_matches if isinstance(figure_matches, list) else []
+        if isinstance(figure_matches, list):
+            self.figure_contents = figure_matches
+        else:
+            self.figure_contents = []
         
         table_matches = PatternMatcher.match_pattern(
             TexPatterns.TABLE, self.clean_content, mode="all"
         )
-        self.table_contents = table_matches if isinstance(table_matches, list) else []
+        if isinstance(table_matches, list):
+            self.table_contents = table_matches
+        else:
+            self.table_contents = []
         
-        self.logger.info(f"Found {len(self.figure_contents)} figure environments")
-        self.logger.info(f"Found {len(self.table_contents)} table environments")
+        self.logger.info(
+            "Found %d figure environments",
+            len(self.figure_contents),
+        )
+        self.logger.info(
+            "Found %d table environments",
+            len(self.table_contents),
+        )
         
         # Determine figure package
-        self.figure_package = PatternMatcher.find_figure_package(self.clean_content)
-        self.logger.debug(f"Detected figure package: {self.figure_package}")
+        self.figure_package = PatternMatcher.find_figure_package(
+            self.clean_content
+        )
+        self.logger.debug("Detected figure package: %s", self.figure_package)
         
         # Determine graphics path
         self._determine_graphicspath()
         
         # Check for Chinese characters
         combined_content = "".join(self.figure_contents + self.table_contents)
-        self.contains_chinese = PatternMatcher.has_chinese_characters(combined_content)
+        self.contains_chinese = PatternMatcher.has_chinese_characters(
+            combined_content
+        )
         if self.contains_chinese:
             self.logger.debug("Detected Chinese characters in figures/tables")
     
     def _determine_graphicspath(self) -> None:
         """Determine the graphics path from the LaTeX content."""
+        base_directory = self.input_file.parent.resolve()
         if self.clean_content:
-            graphicspath_str = PatternMatcher.extract_graphicspath(self.clean_content)
-            if graphicspath_str:
-                # Resolve relative to input TeX file parent
-                self.graphicspath = (self.config.input_texfile.parent / graphicspath_str).resolve()
-            else:
-                self.graphicspath = self.config.input_texfile.parent.resolve()
+            entries = PatternMatcher.extract_graphicspaths(self.clean_content)
+            self.graphicspath_entries = entries
+            bases = [base_directory] + self.include_directories
+            resolved_paths = self._resolve_graphicspath_entries(entries, bases)
         else:
-            self.graphicspath = self.config.input_texfile.parent.resolve()
+            entries = []
+            resolved_paths = []
+
+        if not resolved_paths:
+            resolved_paths = [base_directory]
+
+        self.graphicspaths = resolved_paths
+        if resolved_paths:
+            self.graphicspath = resolved_paths[0]
+        else:
+            self.graphicspath = base_directory
         
-        self.logger.debug(f"Determined graphics path: {self.graphicspath}")
+        self.logger.debug("Determined graphics paths: %s", self.graphicspaths)
     
     def get_analysis_summary(self) -> dict:
         """
@@ -185,6 +241,44 @@ class LatexParser:
             "num_tables": len(self.table_contents),
             "figure_package": self.figure_package,
             "contains_chinese": self.contains_chinese,
-            "graphicspath": str(self.graphicspath) if self.graphicspath else None,
+            "graphicspath": (
+                str(self.graphicspath) if self.graphicspath else None
+            ),
+            "graphicspaths": [str(path) for path in self.graphicspaths],
+            "graphicspath_entries": list(self.graphicspath_entries),
+            "include_directories": [
+                str(path) for path in self.include_directories
+            ],
             "has_clean_content": self.clean_content is not None,
         }
+
+    def _register_include_directory(self, directory: Path) -> None:
+        """Track directories of included files for asset resolution."""
+        resolved = directory.resolve()
+        if resolved not in self.include_directories:
+            self.include_directories.append(resolved)
+
+    def _resolve_graphicspath_entries(
+        self,
+        entries: List[str],
+        base_directories: List[Path],
+    ) -> List[Path]:
+        """Resolve graphicspath entries relative to the base document."""
+        resolved: List[Path] = []
+        seen: set[Path] = set()
+
+        for entry in entries:
+            candidate = Path(entry)
+            if candidate.is_absolute():
+                resolved_path = candidate.resolve()
+                if resolved_path not in seen:
+                    resolved.append(resolved_path)
+                    seen.add(resolved_path)
+                continue
+            for base in base_directories:
+                combined = (base / candidate).resolve()
+                if combined not in seen:
+                    resolved.append(combined)
+                    seen.add(combined)
+
+        return resolved
