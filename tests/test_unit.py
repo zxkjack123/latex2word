@@ -6,7 +6,7 @@ correctly in isolation and provide good test coverage for the codebase.
 
 Test categories:
 - ConversionConfig: Configuration validation and setup
-- PatternMatcher: Text pattern matching utilities  
+- PatternMatcher: Text pattern matching utilities
 - TextProcessor: Text processing and manipulation
 - LatexParser: LaTeX document parsing functionality
 - Constants: Template and pattern definitions
@@ -21,8 +21,9 @@ from unittest.mock import patch
 
 import pytest
 
+from tex2docx import LatexToWordConverter
 from tex2docx.config import ConversionConfig
-from tex2docx.constants import TexPatterns, TexTemplates
+from tex2docx.constants import PandocOptions, TexPatterns, TexTemplates
 from tex2docx.parser import LatexParser
 from tex2docx.utils import PatternMatcher, TextProcessor
 
@@ -34,7 +35,10 @@ class TestConversionConfig:
         """Test basic config initialization."""
         input_file = tmp_path / "test.tex"
         output_file = tmp_path / "test.docx"
-        input_file.write_text("\\documentclass{article}\\begin{document}Test\\end{document}")
+        input_file.write_text(
+            "\\documentclass{article}"
+            "\\begin{document}Test\\end{document}"
+        )
         
         config = ConversionConfig(
             input_texfile=input_file,
@@ -54,7 +58,10 @@ class TestConversionConfig:
         input_file = tmp_path / "nonexistent.tex"
         output_file = tmp_path / "test.docx"
         
-        with pytest.raises(FileNotFoundError, match="Input TeX file not found"):
+        with pytest.raises(
+            FileNotFoundError,
+            match="Input TeX file not found",
+        ):
             ConversionConfig(
                 input_texfile=input_file,
                 output_docxfile=output_file
@@ -64,7 +71,10 @@ class TestConversionConfig:
         """Test logger setup."""
         input_file = tmp_path / "test.tex"
         output_file = tmp_path / "test.docx"
-        input_file.write_text("\\documentclass{article}\\begin{document}Test\\end{document}")
+        input_file.write_text(
+            "\\documentclass{article}"
+            "\\begin{document}Test\\end{document}"
+        )
         
         config = ConversionConfig(
             input_texfile=input_file,
@@ -79,6 +89,36 @@ class TestConversionConfig:
         logger2 = config.setup_logger()
         assert logger2.level == logging.INFO
 
+    def test_metadata_override_generation(self, tmp_path):
+        """Metadata overrides include localized captions and authors."""
+
+        input_file = tmp_path / "meta.tex"
+        output_file = tmp_path / "meta.docx"
+        input_file.write_text(
+            "\\documentclass{article}"
+            "\\begin{document}x\\end{document}"
+        )
+
+        config = ConversionConfig(
+            input_texfile=input_file,
+            output_docxfile=output_file,
+        )
+
+        default_metadata = config.get_metadata_file()
+        assert default_metadata == PandocOptions.METADATA_FILE
+
+        config.apply_caption_preferences(locale="zh")
+        config.set_author_metadata(
+            [{"name": "Ada Lovelace", "affiliation": "Analytical"}]
+        )
+
+        override_metadata = config.get_metadata_file()
+        assert override_metadata != PandocOptions.METADATA_FILE
+        contents = override_metadata.read_text(encoding="utf-8")
+        assert "图 $$i$$$$titleDelim$$ $$t$$" in contents
+        assert 'titleDelim: "："' in contents
+        assert "Ada Lovelace" in contents
+
 
 class TestPatternMatcher:
     """Test the PatternMatcher utility class."""
@@ -86,31 +126,51 @@ class TestPatternMatcher:
     def test_match_pattern_all(self):
         """Test pattern matching with 'all' mode."""
         content = "\\ref{fig1} and \\ref{fig2} and \\ref{fig3}"
-        result = PatternMatcher.match_pattern(TexPatterns.REF, content, "all")
+        result = PatternMatcher.match_pattern(
+            TexPatterns.REF,
+            content,
+            "all",
+        )
         assert result == ["fig1", "fig2", "fig3"]
     
     def test_match_pattern_first(self):
         """Test pattern matching with 'first' mode."""
         content = "\\ref{fig1} and \\ref{fig2} and \\ref{fig3}"
-        result = PatternMatcher.match_pattern(TexPatterns.REF, content, "first")
+        result = PatternMatcher.match_pattern(
+            TexPatterns.REF,
+            content,
+            "first",
+        )
         assert result == "fig1"
     
     def test_match_pattern_last(self):
         """Test pattern matching with 'last' mode."""
         content = "\\ref{fig1} and \\ref{fig2} and \\ref{fig3}"
-        result = PatternMatcher.match_pattern(TexPatterns.REF, content, "last")
+        result = PatternMatcher.match_pattern(
+            TexPatterns.REF,
+            content,
+            "last",
+        )
         assert result == "fig3"
     
     def test_match_pattern_none(self):
         """Test pattern matching with no matches."""
         content = "No references here"
-        result = PatternMatcher.match_pattern(TexPatterns.REF, content, "first")
+        result = PatternMatcher.match_pattern(
+            TexPatterns.REF,
+            content,
+            "first",
+        )
         assert result is None
     
     def test_match_pattern_invalid_mode(self):
         """Test pattern matching with invalid mode."""
         with pytest.raises(ValueError, match="mode must be"):
-            PatternMatcher.match_pattern(TexPatterns.REF, "content", "invalid")
+            PatternMatcher.match_pattern(
+                TexPatterns.REF,
+                "content",
+                "invalid",
+            )
     
     def test_find_figure_package_subfig(self):
         """Test detection of subfig package."""
@@ -302,7 +362,9 @@ class TestConstants:
         assert hasattr(TexTemplates, 'MODIFIED_TABENV')
         
         # Check that templates contain expected placeholders
-        assert "FIGURE_CONTENT_PLACEHOLDER" in TexTemplates.BASE_MULTIFIG_TEXFILE
+        assert "FIGURE_CONTENT_PLACEHOLDER" in (
+            TexTemplates.BASE_MULTIFIG_TEXFILE
+        )
         assert "GRAPHICSPATH_PLACEHOLDER" in TexTemplates.BASE_MULTIFIG_TEXFILE
         assert "%s" in TexTemplates.MULTIFIG_FIGENV
         assert "%s" in TexTemplates.MODIFIED_TABENV
@@ -398,6 +460,37 @@ def sample_config(temp_dir):
         output_docxfile=output_file,
         debug=True
     )
+
+
+# Performance and stress tests
+class TestConverterPreferences:
+    """Converter-level preference wiring tests."""
+
+    def test_converter_applies_caption_locale_and_author(self, tmp_path):
+        """Converter propagates locale and author metadata to config."""
+
+        input_file = tmp_path / "pref.tex"
+        output_file = tmp_path / "pref.docx"
+        input_file.write_text(
+            "\\documentclass{article}"
+            "\\begin{document}x\\end{document}"
+        )
+
+        converter = LatexToWordConverter(
+            input_texfile=input_file,
+            output_docxfile=output_file,
+            caption_locale="zh",
+            author_metadata=[{"name": "Ada Lovelace"}],
+        )
+
+        config = converter.config
+        assert config.caption_style.fig_prefix[0] == "图"
+        assert config.author_metadata == [{"name": "Ada Lovelace"}]
+
+        metadata_path = config.get_metadata_file()
+        assert metadata_path != PandocOptions.METADATA_FILE
+        metadata_text = metadata_path.read_text(encoding="utf-8")
+        assert "Ada Lovelace" in metadata_text
 
 
 # Performance and stress tests

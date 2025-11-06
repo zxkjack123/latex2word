@@ -77,6 +77,16 @@ tex2docx convert --input-texfile ./tests/en/main.tex --output-docxfile ./tests/e
 
 则可以在 `tests/en` 目录下找到转换后的 `main_cli.docx` 文件。
 
+如果需要在 Word 中展示中文的“图”“表”前缀，可通过 `--caption-locale` 指定语言，例如：
+
+```shell
+tex2docx convert --input-texfile ./tests/zh/main.tex \
+   --output-docxfile ./tests/zh/main.docx \
+   --caption-locale zh
+```
+
+转换结果会直接在 DOCX caption 中写入中文编号，保证交叉引用保持一致。
+
 **注意**: 如果你使用 `uv pip install -e .` 以可编辑模式安装了此工具，直接在终端运行 `tex2docx` 可能提示找不到命令。这是因为包含该命令的路径可能未添加到系统的 `PATH` 环境变量中。你可以：
 1.  激活 `uv` 管理的虚拟环境（通常是 `.venv`）：`source .venv/bin/activate`，然后再运行 `tex2docx`。
 2.  使用 `uv run` 命令：`uv run tex2docx convert ...`，`uv` 会在正确的项目环境中执行命令。
@@ -188,11 +198,17 @@ pandoc texfile -o docxfile \
 
 ## 遗留问题
 
-1. 中文的图表 caption 仍以 Fiugre 和 Table 开头；
-2. 作者信息无法完整转换。
-3. Word 文件中的交叉引用编号为静态文本。如需新增或删除图、表、公式，建议重新运行转换流程，而不是依赖 Word 自行刷新编号。
+1. 作者信息无法完整转换。
+2. Word 文件中的交叉引用编号为静态文本。如需新增或删除图、表、公式，建议重新运行转换流程，而不是依赖 Word 自行刷新编号。
 
 ## 更新记录
+
+### v1.3.2
+
+1. 新增 caption 本地化支持，使用 `--caption-locale zh` 即可在 DOCX 中
+   输出 `图/表` 前缀并保持交叉引用准确。
+2. 文档补充了 caption 本地化用法，并移除了“中文 caption 仍为
+   Figure/Table”的旧遗留问题说明。
 
 ### v1.3.1
 

@@ -76,6 +76,16 @@ convert --input-texfile ./tests/en/main.tex --output-docxfile ./tests/en/main_cl
 
 This will generate the Word file `main_cli.docx` in the `tests/en` directory.
 
+To localize figure and table captions, pass a locale hint. For simplified Chinese prefixes (`图`, `表`):
+
+```shell
+tex2docx convert --input-texfile ./tests/zh/main.tex \
+   --output-docxfile ./tests/zh/main.docx \
+   --caption-locale zh
+```
+
+The converter embeds the localized numbering directly into the DOCX captions so cross-references remain correct.
+
 ### Script Usage
 
 ```python
@@ -180,13 +190,19 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
 
 ## Known Issues
 
-1. Captions for figures and tables in Chinese still start with "Figure" and "Table".
-2. Author information is not fully converted.
-3. Cross-reference numbering in the DOCX output is static. After adding or
+1. Author information is not fully converted.
+2. Cross-reference numbering in the DOCX output is static. After adding or
    removing figures, tables, or equations in Word, rerun the converter instead
    of relying on Word to refresh the numbers.
 
 ## Changelog
+
+### v1.3.2
+
+1. Added caption localization plumbing so `--caption-locale zh` renders
+   `图/表` prefixes directly in DOCX outputs, keeping cross-references intact.
+2. Documented the caption locale workflow and removed the stale known issue
+   entry for Chinese captions.
 
 ### v1.3.1
 

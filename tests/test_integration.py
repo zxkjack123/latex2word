@@ -37,6 +37,7 @@ _MINIMAL_PNG: str = (
 )
 
 _W_NS: str = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_W_STYLE_VAL: str = f"{_W_NS}val"
 
 
 def _write_dummy_png(path: Path) -> None:
@@ -51,8 +52,48 @@ def _extract_docx_text(docx_path: Path) -> str:
         xml_bytes = zf.read("word/document.xml")
 
     root = ET.fromstring(xml_bytes)
-    texts = [node.text for node in root.iter(f"{_W_NS}t") if node.text]
+    texts = [
+        node.text
+        for node in root.iter(f"{_W_NS}t")
+        if node.text
+    ]
     return " ".join(texts)
+
+
+def _extract_docx_captions(docx_path: Path) -> list[str]:
+    """Return caption paragraphs extracted from a DOCX document."""
+    with zipfile.ZipFile(docx_path) as zf:
+        xml_bytes = zf.read("word/document.xml")
+
+    root = ET.fromstring(xml_bytes)
+    captions: list[str] = []
+
+    for paragraph in root.iter(f"{_W_NS}p"):
+        style = paragraph.find(f"{_W_NS}pPr/{_W_NS}pStyle")
+        texts = [
+            node.text
+            for node in paragraph.iter(f"{_W_NS}t")
+            if node.text
+        ]
+        if not texts:
+            continue
+
+        text = "".join(texts).strip()
+        style_val = style.attrib.get(_W_STYLE_VAL) if style is not None else ""
+
+        if style_val and "caption" in style_val.lower():
+            captions.append(text)
+            continue
+
+        if (
+            text.startswith("Figure")
+            or text.startswith("Table")
+            or text.startswith("图")
+            or text.startswith("表")
+        ):
+            captions.append(text)
+
+    return captions
 
 
 # Define fixtures for test configurations using pytest.fixture
@@ -106,6 +147,7 @@ def zh_config() -> Dict[str, Any]:
         "bibfile": TEST_DIR / "ref.bib",
         "fix_table": True,
         "debug": False,
+        "caption_locale": "zh",
     }
 
 
@@ -124,6 +166,17 @@ def test_convert_en(en_config: Dict[str, Any]) -> None:
     assert (
         output_path.stat().st_size > 0
     ), f"Output file is empty: {output_path}"
+
+    captions = _extract_docx_captions(output_path)
+    assert any(
+        cap.startswith("Figure 1") for cap in captions
+    ), captions
+    assert any(
+        cap.startswith("Table 1") for cap in captions
+    ), captions
+
+    docx_text = _extract_docx_text(output_path)
+    assert "title of the article" in docx_text.lower()
     # Remind the user to manually check the generated file.
     print(f"\n[Manual Check] Please verify: {output_path}")
 
@@ -141,6 +194,19 @@ def test_convert_en_chapter(en_chapter_config: Dict[str, Any]) -> None:
     assert (
         output_path.stat().st_size > 0
     ), f"Output file is empty: {output_path}"
+
+    captions = _extract_docx_captions(output_path)
+    assert any(
+        cap.startswith("Figure 1") or cap.startswith("Figure 1.")
+        for cap in captions
+    ), captions
+    assert any(
+        cap.startswith("Table 1") or cap.startswith("Table 1.")
+        for cap in captions
+    ), captions
+
+    docx_text = _extract_docx_text(output_path)
+    assert "References" in docx_text
     # Remind the user to manually check the generated file.
     print(f"\n[Manual Check] Please verify: {output_path}")
 
@@ -158,6 +224,20 @@ def test_convert_en_include(en_include_config: Dict[str, Any]) -> None:
     assert (
         output_path.stat().st_size > 0
     ), f"Output file is empty: {output_path}"
+
+    captions = _extract_docx_captions(output_path)
+    assert any(
+        cap.startswith("Figure 1") for cap in captions
+    ), captions
+    assert any(
+        cap.startswith("Table 1") for cap in captions
+    ), captions
+
+    docx_text = _extract_docx_text(output_path)
+    normalized_text = docx_text.replace("\u00a0", " ")
+    assert "Figure 1:" in docx_text
+    assert "Table 1:" in docx_text
+    assert "Fig. 1" in normalized_text
     # Remind the user to manually check the generated file.
     print(f"\n[Manual Check] Please verify: {output_path}")
 
@@ -175,6 +255,19 @@ def test_convert_zh(zh_config: Dict[str, Any]) -> None:
     assert (
         output_path.stat().st_size > 0
     ), f"Output file is empty: {output_path}"
+
+    captions = _extract_docx_captions(output_path)
+    assert any(cap.startswith("图 1") for cap in captions), captions
+    assert any(cap.startswith("表 1") for cap in captions), captions
+
+    docx_text = _extract_docx_text(output_path)
+    assert "示例全球经济指标" in docx_text
+    normalized_text = docx_text.replace("\u00a0", " ")
+    normalized_compact = normalized_text.replace(" ", "")
+    assert "图1" in normalized_compact
+    assert "表1" in normalized_compact
+    assert "Figure" not in docx_text
+    assert "Table" not in docx_text
     # Remind the user to manually check the generated file.
     print(f"\n[Manual Check] Please verify: {output_path}")
 
@@ -257,6 +350,13 @@ def test_graphicspath_multiple_directories(tmp_path: Path) -> None:
 
     assert output_docxfile.exists()
 
+    captions = _extract_docx_captions(output_docxfile)
+    assert all("Nested asset" not in cap for cap in captions), captions
+    assert any(
+        cap.startswith("Figure 1") and "Multi" in cap
+        for cap in captions
+    ), captions
+
 
 def test_include_respects_local_graphicspath(tmp_path: Path) -> None:
     r"""Assets referenced from included files honor local ``\graphicspath``."""
@@ -298,6 +398,75 @@ def test_include_respects_local_graphicspath(tmp_path: Path) -> None:
     converter.convert()
 
     assert output_docxfile.exists()
+
+
+def test_multiple_citations_render(tmp_path: Path) -> None:
+    """References list includes all cited entries."""
+    work_dir = tmp_path / "multi_citations"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    latex_content = dedent(
+        r"""
+        \documentclass{article}
+        \begin{document}
+        We cite several works~\cite{ref1,ref2,ref3} in sequence.
+
+        \bibliographystyle{ieeetr}
+        \bibliography{refs}
+        \end{document}
+        """
+    )
+
+    input_texfile = work_dir / "main.tex"
+    input_texfile.write_text(latex_content, encoding="utf-8")
+
+    bib_content = dedent(
+        r"""
+        @article{ref1,
+          author = {Alpha, Alice},
+          title = {Comprehensive Guide to Testing},
+          journal = {Quality Journal},
+          year = {2020}
+        }
+
+        @book{ref2,
+          author = {Beta, Bob},
+          title = {Advanced Conversion Workflows},
+          year = {2021},
+          publisher = {Publishing House}
+        }
+
+        @inproceedings{ref3,
+          author = {Gamma, Gina},
+          title = {Edge Cases in Document Pipelines},
+          booktitle = {Proceedings of TestingConf},
+          year = {2022}
+        }
+        """
+    )
+
+    bibfile = work_dir / "refs.bib"
+    bibfile.write_text(bib_content, encoding="utf-8")
+
+    output_docxfile = work_dir / "main.docx"
+
+    converter = LatexToWordConverter(
+        input_texfile=input_texfile,
+        output_docxfile=output_docxfile,
+        reference_docfile=PROJECT_ROOT / "my_temp.docx",
+        cslfile=PROJECT_ROOT / "ieee.csl",
+        bibfile=bibfile,
+        debug=True,
+    )
+    converter.convert()
+
+    docx_text = _extract_docx_text(output_docxfile)
+    assert output_docxfile.exists()
+    assert "References" in docx_text
+    normalized = docx_text.lower()
+    assert "comprehensive guide to testing" in normalized
+    assert "advanced conversion workflows" in normalized
+    assert "edge cases in document pipelines" in normalized
 
 
 def test_numbered_references_roundtrip(tmp_path: Path) -> None:

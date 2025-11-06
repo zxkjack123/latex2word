@@ -2,9 +2,9 @@
 
 import logging
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
-from .config import ConversionConfig
+from .config import ConversionConfig, YamlValue
 from .converter import PandocConverter
 from .exceptions import Tex2DocxError
 from .file_manager import FileManager
@@ -32,6 +32,8 @@ class LatexToWordConverter:
         multifig_texfile_template: Union[str, None] = None,  # Deprecated
         multifig_figenv_template: Union[str, None] = None,
         fix_table: bool = True,
+        caption_locale: Optional[str] = None,
+        author_metadata: Optional[YamlValue] = None,
     ) -> None:
         """
         Initialize the LaTeX to Word converter.
@@ -56,21 +58,36 @@ class LatexToWordConverter:
         # Issue deprecation warning for old parameter
         if multifig_texfile_template is not None:
             logging.warning(
-                "multifig_texfile_template parameter is deprecated and ignored. "
-                "Templates are now generated dynamically."
+                "multifig_texfile_template parameter is deprecated and "
+                "ignored. Templates are now generated dynamically."
             )
-        
+
+        input_path = Path(input_texfile)
+        output_path = Path(output_docxfile)
+        bib_path = Path(bibfile) if bibfile is not None else None
+        csl_path = Path(cslfile) if cslfile is not None else None
+        reference_path = (
+            Path(reference_docfile) if reference_docfile is not None else None
+        )
+
         # Create configuration
         self.config = ConversionConfig(
-            input_texfile=input_texfile,
-            output_docxfile=output_docxfile,
-            bibfile=bibfile,
-            cslfile=cslfile,
-            reference_docfile=reference_docfile,
+            input_texfile=input_path,
+            output_docxfile=output_path,
+            bibfile=bib_path,
+            cslfile=csl_path,
+            reference_docfile=reference_path,
             debug=debug,
             fix_table=fix_table,
             multifig_figenv_template=multifig_figenv_template,
         )
+
+        if caption_locale is not None:
+            locale_value = caption_locale.strip()
+            self.config.apply_caption_preferences(locale=locale_value)
+
+        if author_metadata is not None:
+            self.config.set_author_metadata(author_metadata)
         
         # Set up logger
         self.logger = self.config.setup_logger()
@@ -126,8 +143,14 @@ class LatexToWordConverter:
             # Step 4: Modify LaTeX content
             self.logger.info("Step 4: Creating modified LaTeX file")
             modifier = ContentModifier(self.config)
+            cleaned_content = parser.clean_content
+            if cleaned_content is None:
+                raise Tex2DocxError(
+                    "Parser did not produce cleaned LaTeX content."
+                )
+
             modifier.create_modified_content(
-                parser.clean_content,
+                cleaned_content,
                 parser.figure_contents,
                 parser.table_contents,
                 subfile_gen.created_figure_files,
