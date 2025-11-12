@@ -164,8 +164,8 @@ def convert(
         ),
     ),
     fix_table: bool = typer.Option(
-        True,
-        help="Whether to fix tables with png. Defaults to True.",
+        False,
+        help="Whether to rasterize tables into PNG images.",
     ),
     debug: bool = typer.Option(
         False,

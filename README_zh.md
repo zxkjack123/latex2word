@@ -38,6 +38,7 @@ tex2docx convert --input-texfile <your_texfile> --output-docxfile <your_docxfile
 ## 安装依赖
 
 需要安装 Pandoc、Pandoc-Crossref 和相关 Python 库。
+Tex2docx 现需 **Python 3.10 及以上版本** 才能支持新的 MCP 集成能力。
 
 ### Pandoc
 
@@ -202,6 +203,26 @@ pandoc texfile -o docxfile \
 2. Word 文件中的交叉引用编号为静态文本。如需新增或删除图、表、公式，建议重新运行转换流程，而不是依赖 Word 自行刷新编号。
 
 ## 更新记录
+
+### v1.3.3
+
+1. 加固 CFETR COOL blanket 转换流程，Pandoc AST 中保留
+   `tbl:cool_recycling_summary` div，消除了之前 `pandoc-crossref`
+   的交叉引用警告。
+2. 新增 fallback 版本号设置，即便缺少 Git 元数据也能一致地
+   显示 1.3.3 版本信息。
+3. 新增对 LaTeX 作者与机构信息的解析，并通过 Lua 过滤器输出至 DOCX，
+   保留作者、单位、通讯方式等结构化信息。
+4. 自动识别 `\bibliography` 与 `\addbibresource` 声明的 `.bib` 文件，
+   将所有可用文献库自动交给 Pandoc 引用流程处理。
+5. 默认保留表格为原生 DOCX 表格，转换 `booktabs` 命令、添加三线表样式，
+   并解包 `\resizebox` 包裹；`--fix-table` 现改为按需启用。
+6. 新增 MCP stdio 服务入口 `tex2docx-mcp`，并提供集成测试，便于客户端
+   通过 Model Context Protocol 调用转换任务。
+7. 为 Pandoc 与 XeLaTeX 子进程添加显式超时时间，并改进并行编译时的进程
+   上下文选择，避免阻塞。
+8. 当自动检测到文档包含中文且未指定 locale 时，自动切换 caption 本地化为中文。
+9. 最低支持的 Python 版本提升至 3.10，以满足 MCP 相关依赖要求。
 
 ### v1.3.2
 

@@ -1,6 +1,8 @@
 """LaTeX subfile generation and compilation."""
 
 import concurrent.futures
+import multiprocessing as mp
+import sys
 import os
 import subprocess
 import uuid
@@ -99,10 +101,10 @@ class SubfileGenerator:
             self._write_subfile(item_content, filename, graphicspath_entries)
     
     def _generate_filename(
-        self, 
-        content: str, 
-        prefix: str, 
-        counter: int, 
+        self,
+        content: str,
+        prefix: str,
+        counter: int,
         existing_names: set
     ) -> str:
         """
@@ -213,7 +215,12 @@ class SubfileGenerator:
         if figure_package == "subfig":
             package_lines = "\\usepackage{caption}\n\\usepackage{subfig}"
         elif figure_package == "subfigure":
-            package_lines = f"\\usepackage{{{figure_package}}}"
+            package_lines = "\\usepackage{subfigure}"
+        elif figure_package == "subcaption":
+            package_lines = (
+                "\\usepackage{caption}\n"
+                "\\usepackage{subcaption}"
+            )
         else:
             package_lines = ""
         
@@ -222,14 +229,23 @@ class SubfileGenerator:
                 "% FIGURE_PACKAGE_PLACEHOLDER %", package_lines
             )
         else:
-            file_content = file_content.replace("% FIGURE_PACKAGE_PLACEHOLDER %\n", "")
+            file_content = file_content.replace(
+                "% FIGURE_PACKAGE_PLACEHOLDER %\n",
+                "",
+            )
         
         # Set CJK package if needed
         if self.parser_results.get("contains_chinese", False):
             cjk_line = "\\usepackage{xeCJK}"
-            file_content = file_content.replace("% CJK_PACKAGE_PLACEHOLDER %", cjk_line)
+            file_content = file_content.replace(
+                "% CJK_PACKAGE_PLACEHOLDER %",
+                cjk_line,
+            )
         else:
-            file_content = file_content.replace("% CJK_PACKAGE_PLACEHOLDER %\n", "")
+            file_content = file_content.replace(
+                "% CJK_PACKAGE_PLACEHOLDER %\n",
+                "",
+            )
         
         # Set graphics path
         joined_paths = "}{".join(graphicspath_entries)
@@ -252,7 +268,10 @@ class SubfileGenerator:
             try:
                 roots.append(Path(path_str).resolve())
             except Exception:
-                self.logger.debug("Could not resolve graphicspath '%s'", path_str)
+                self.logger.debug(
+                    "Could not resolve graphicspath '%s'",
+                    path_str,
+                )
 
         raw_entries = self.parser_results.get("graphicspath_entries") or []
         include_dirs = [
@@ -449,9 +468,9 @@ class SubfileCompiler:
         self.logger = config.setup_logger()
     
     def compile_all_subfiles(
-        self, 
-        figure_files: Dict[int, str], 
-        table_files: Dict[int, str]
+        self,
+        figure_files: Dict[int, str],
+        table_files: Dict[int, str],
     ) -> None:
         """
         Compile all subfiles to PNG images in parallel.
@@ -487,15 +506,20 @@ class SubfileCompiler:
                 ", ".join(failed),
             )
 
-    def _compile_parallel(self, file_paths: List[Path]) -> Tuple[int, List[str]]:
+    def _compile_parallel(
+        self,
+        file_paths: List[Path],
+    ) -> Tuple[int, List[str]]:
         """Compile files in parallel using ProcessPoolExecutor."""
         successful_count = 0
         failed_files: List[str] = []
 
         max_workers = min(CompilerOptions.MAX_WORKERS, len(file_paths))
 
+        context = self._select_executor_context()
         with concurrent.futures.ProcessPoolExecutor(
-            max_workers=max_workers
+            max_workers=max_workers,
+            mp_context=context,
         ) as executor:
             futures = {
                 executor.submit(self._compile_single_file, path): path
@@ -526,6 +550,30 @@ class SubfileCompiler:
                     failed_files.append(file_path.name)
 
         return successful_count, failed_files
+
+    def _select_executor_context(self) -> mp.context.BaseContext:
+        """Choose an executor context that works in the current runtime."""
+
+        main_path = Path(sys.argv[0]) if sys.argv else None
+        spawn_supported = True
+
+        if main_path is None or not main_path.exists():
+            spawn_supported = False
+        elif main_path.name == "<stdin>":
+            spawn_supported = False
+
+        if spawn_supported:
+            try:
+                return mp.get_context("spawn")
+            except ValueError:
+                self.logger.warning(
+                    "Spawn context unavailable; falling back to default",
+                )
+
+        self.logger.debug(
+            "Using default multiprocessing context for subfile compiler",
+        )
+        return mp.get_context()
     
     @staticmethod
     def _compile_single_file(file_path: Path) -> bool:
@@ -538,7 +586,11 @@ class SubfileCompiler:
         Returns:
             True if compilation succeeded, False otherwise.
         """
-        command = ["xelatex"] + CompilerOptions.XELATEX_OPTIONS + [file_path.name]
+        command = [
+            "xelatex",
+            *CompilerOptions.XELATEX_OPTIONS,
+            file_path.name,
+        ]
         
         try:
             result = subprocess.run(
@@ -549,21 +601,29 @@ class SubfileCompiler:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                cwd=file_path.parent
+                cwd=file_path.parent,
+                timeout=CompilerOptions.XELATEX_TIMEOUT,
             )
             
             # Write logs
-            with open(file_path.with_suffix(".out"), "w", encoding="utf-8") as f:
-                f.write(result.stdout)
-            with open(file_path.with_suffix(".err"), "w", encoding="utf-8") as f:
-                f.write(result.stderr)
+            with open(
+                file_path.with_suffix(".out"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write(result.stdout)
+            with open(
+                file_path.with_suffix(".err"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write(result.stderr)
             
             # Check for PNG file
             return SubfileCompiler._handle_png_output(file_path)
             
-        except subprocess.CalledProcessError as e:
-            # Log compilation failure
-            SubfileCompiler._log_compilation_failure(file_path, e)
+        except subprocess.CalledProcessError as exc:
+            SubfileCompiler._log_compilation_failure(file_path, exc)
             return False
         except Exception:
             return False
@@ -571,7 +631,8 @@ class SubfileCompiler:
     @staticmethod
     def _handle_png_output(tex_path: Path) -> bool:
         """
-        Handle PNG file output from compilation.
+                    errors="replace",
+                    timeout=CompilerOptions.XELATEX_TIMEOUT,
         
         Args:
             tex_path: Path to the source TeX file.
@@ -601,7 +662,10 @@ class SubfileCompiler:
             return False
     
     @staticmethod
-    def _log_compilation_failure(file_path: Path, error: subprocess.CalledProcessError) -> None:
+    def _log_compilation_failure(
+        file_path: Path,
+        error: subprocess.CalledProcessError,
+    ) -> None:
         """
         Log compilation failure details.
         
@@ -610,9 +674,17 @@ class SubfileCompiler:
             error: The subprocess error.
         """
         try:
-            with open(file_path.with_suffix(".out"), "w", encoding="utf-8") as f:
-                f.write(error.stdout or "")
-            with open(file_path.with_suffix(".err"), "w", encoding="utf-8") as f:
-                f.write(error.stderr or "")
+            with open(
+                file_path.with_suffix(".out"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write(error.stdout or "")
+            with open(
+                file_path.with_suffix(".err"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write(error.stderr or "")
         except Exception:
             pass  # Ignore logging failures

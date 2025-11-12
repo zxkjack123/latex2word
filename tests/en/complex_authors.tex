@@ -1,0 +1,43 @@
+\documentclass[a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{authblk}
+\usepackage{setspace}
+\usepackage[margin=1.25in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\title{Complex Author Scenario for Conversion}
+
+\author[1,2]{Dr. Alice Smith}
+\author[2]{Dr. Bob Lee}
+\author[1,*]{Dr. Carol King\thanks{Corresponding author: carol.king@example.edu}}
+\author[3]{Dr. David Wong}
+\author[1,$\dag$]{Dr. Emily Clark}
+\author[3,$\dag$]{Dr. Frank White}
+
+\affil[1]{Department of Computational Science, Example Institute}
+\affil[2]{Center for Data Innovation, Example Institute}
+\affil[3]{School of Engineering, Sample University}
+\affil[*]{Correspondence: carol.king@example.edu}
+\affil[$\dag$]{These authors contributed equally to this work.}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document exercises complex author metadata with multiple affiliations, a corresponding author, and equal contribution notes for conversion testing.
+\end{abstract}
+
+\section{Introduction}
+This is a minimal body included so the converter has content to process.
+
+\section{Conclusion}
+The goal of this file is to validate parsing and propagation of complex author metadata.
+
+\bibliographystyle{ieeetr}
+\bibliography{../ref}
+
+\end{document}

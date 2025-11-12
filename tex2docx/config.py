@@ -7,7 +7,7 @@ import uuid
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 from .constants import PandocOptions, TexTemplates
 
@@ -159,14 +159,22 @@ class ConversionConfig:
     cslfile: Optional[Path] = None
     reference_docfile: Optional[Path] = None
     debug: bool = False
-    fix_table: bool = True
+    fix_table: bool = False
     caption_style: CaptionStyle = field(default_factory=CaptionStyle.default)
     multifig_figenv_template: Optional[str] = None
     output_texfile: Path = field(init=False)
     temp_subtexfile_dir: Path = field(init=False)
-    luafile: Path = field(init=False)
+    lua_filters: List[Path] = field(init=False, default_factory=list)
+    author_lua_filters: List[Path] = field(init=False, default_factory=list)
     metadata_override_file: Optional[Path] = field(default=None, init=False)
-    author_metadata: Optional[YamlValue] = field(default=None, init=False)
+    author_metadata: Optional[Dict[str, YamlValue]] = field(
+        default=None,
+        init=False,
+    )
+    bibliography_files: List[Path] = field(
+        default_factory=list,
+        init=False,
+    )
 
     def __post_init__(self) -> None:
         """Initialize derived paths and validate configuration."""
@@ -180,6 +188,8 @@ class ConversionConfig:
         if self.reference_docfile is not None:
             self.reference_docfile = Path(self.reference_docfile).resolve()
 
+        self._bibfile_explicit = self.bibfile is not None
+
         self.output_texfile = self.input_texfile.with_name(
             f"{self.input_texfile.stem}_modified.tex"
         )
@@ -188,6 +198,7 @@ class ConversionConfig:
         )
 
         self._set_default_paths()
+        self._initialize_bibliography_files()
         self._validate_input_files()
 
     def _reset_metadata_override(self) -> None:
@@ -211,7 +222,28 @@ class ConversionConfig:
                 package_dir / "default_temp.docx"
             ).resolve()
 
-        self.luafile = (package_dir / "resolve_equation_labels.lua").resolve()
+        self.author_lua_filters = [
+            (package_dir / "scholarly-metadata.lua").resolve(),
+            (package_dir / "author-info-blocks.lua").resolve(),
+        ]
+        self.lua_filters = [
+            (package_dir / "resolve_equation_labels.lua").resolve(),
+        ]
+
+    def _initialize_bibliography_files(self) -> None:
+        """Prime the bibliography file collection."""
+        self.bibliography_files = []
+        if self.bibfile is not None:
+            self._register_bibliography_path(self.bibfile)
+
+    def _register_bibliography_path(self, path: Path) -> None:
+        """Store a bibliography path if it is new."""
+        resolved = Path(path).resolve()
+        if resolved not in self.bibliography_files:
+            self.bibliography_files.append(resolved)
+        explicit = getattr(self, "_bibfile_explicit", False)
+        if self.bibfile is None and not explicit:
+            self.bibfile = resolved
 
     def _validate_input_files(self) -> None:
         """Validate that required input files exist."""
@@ -220,8 +252,13 @@ class ConversionConfig:
                 f"Input TeX file not found: {self.input_texfile}"
             )
 
-        if self.bibfile is not None and not self.bibfile.exists():
-            logging.warning("Bibliography file not found: %s", self.bibfile)
+        missing_bibliographies = [
+            str(path)
+            for path in self.bibliography_files
+            if not path.exists()
+        ]
+        for missing in missing_bibliographies:
+            logging.warning("Bibliography file not found: %s", missing)
 
         if self.cslfile is not None and not self.cslfile.exists():
             raise FileNotFoundError(f"CSL file not found: {self.cslfile}")
@@ -234,8 +271,19 @@ class ConversionConfig:
                 f"Reference document not found: {self.reference_docfile}"
             )
 
-        if self.luafile is None or not self.luafile.exists():
-            raise FileNotFoundError(f"Lua filter not found: {self.luafile}")
+        if not self.lua_filters:
+            raise FileNotFoundError("Lua filters not configured.")
+
+        all_filters = self.lua_filters + self.author_lua_filters
+        missing_filters = [
+            str(path)
+            for path in all_filters
+            if not path.exists()
+        ]
+        if missing_filters:
+            raise FileNotFoundError(
+                "Lua filter not found: " + ", ".join(missing_filters)
+            )
 
     def apply_caption_preferences(
         self,
@@ -266,13 +314,49 @@ class ConversionConfig:
         metadata: Optional[YamlValue],
     ) -> None:
         """Store parsed author metadata for later use."""
-        self.author_metadata = metadata
+
+        if metadata is None:
+            self.author_metadata = None
+        else:
+            from .authors import prepare_author_metadata
+
+            normalized = prepare_author_metadata(metadata)
+            if normalized and normalized.get("author"):
+                self.author_metadata = normalized
+            else:
+                self.author_metadata = None
         self._reset_metadata_override()
+
+    def set_detected_bibliography(self, path: Path) -> None:
+        """Update bibliography path based on detected LaTeX commands."""
+
+        resolved = Path(path).resolve()
+        self.add_bibliography_file(resolved)
+
+    def add_bibliography_file(self, path: Path) -> None:
+        """Add a bibliography file to the configuration."""
+        self._register_bibliography_path(path)
+
+    def get_bibliography_files(self) -> List[Path]:
+        """Return all configured bibliography files."""
+        return list(self.bibliography_files)
+
+    def iter_bibliography_files(self) -> Iterable[Path]:
+        """Iterate over configured bibliography files."""
+        return iter(self.bibliography_files)
+
+    def has_bibliography(self) -> bool:
+        """Return True when at least one bibliography file exists."""
+        for path in self.bibliography_files:
+            if path.exists() and path.is_file():
+                return True
+        return False
 
     def get_metadata_file(self) -> Path:
         """Return the metadata file to use for Pandoc."""
-        needs_override = (not self.caption_style.is_default()) or bool(
-            self.author_metadata
+        needs_override = (
+            not self.caption_style.is_default()
+            or self.has_author_metadata()
         )
 
         if not needs_override:
@@ -301,9 +385,40 @@ class ConversionConfig:
             metadata[key] = value
 
         if self.author_metadata:
-            metadata["author"] = self.author_metadata
+            author_section = self.author_metadata.get("author")
+            if author_section is not None:
+                metadata["author"] = author_section
+
+            institute_section = self.author_metadata.get("institute")
+            if institute_section is not None:
+                metadata["institute"] = institute_section
+
+            for extra_key, extra_value in self.author_metadata.items():
+                if extra_key in {"author", "institute"}:
+                    continue
+                metadata[extra_key] = extra_value
 
         return _render_yaml(dict(metadata))
+
+    def get_lua_filters(self) -> List[Path]:
+        """Return Lua filters to use for the current configuration."""
+
+        filters = list(self.lua_filters)
+        if self.has_author_metadata():
+            filters = list(self.author_lua_filters) + filters
+        return filters
+
+    def has_author_metadata(self) -> bool:
+        """Return True when author metadata with entries is available."""
+
+        if not self.author_metadata:
+            return False
+
+        authors = self.author_metadata.get("author")
+        if isinstance(authors, list):
+            return len(authors) > 0
+
+        return False
 
     def get_multifig_template(self) -> str:
         """Get the multi-figure template to use."""
@@ -330,9 +445,16 @@ class ConversionConfig:
         logger.debug("Output DOCX file: %s", self.output_docxfile)
         logger.debug("Output TeX file: %s", self.output_texfile)
         logger.debug("Temp directory: %s", self.temp_subtexfile_dir)
-        logger.debug("Bibliography file: %s", self.bibfile)
+        logger.debug("Primary bibliography file: %s", self.bibfile)
+        logger.debug(
+            "Bibliography files: %s",
+            [str(path) for path in self.bibliography_files],
+        )
         logger.debug("CSL file: %s", self.cslfile)
         logger.debug("Reference document: %s", self.reference_docfile)
-        logger.debug("Lua filter: %s", self.luafile)
+        logger.debug(
+            "Lua filters: %s",
+            [str(path) for path in self.get_lua_filters()],
+        )
         logger.debug("Fix tables: %s", self.fix_table)
         logger.debug("Debug mode: %s", self.debug)

@@ -37,6 +37,7 @@ Replace `<...>` in the command with the corresponding file path and name.
 ## Install Dependencies
 
 Ensure you have installed Pandoc, Pandoc-Crossref, and related Python libraries.
+Tex2docx now requires **Python 3.10 or newer** to support the MCP integration layer.
 
 ### Pandoc
 
@@ -196,6 +197,30 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
    of relying on Word to refresh the numbers.
 
 ## Changelog
+
+### v1.3.3
+
+1. Hardened the CFETR COOL blanket conversion path so the Pandoc AST now
+   retains the `tbl:cool_recycling_summary` div and suppresses the previous
+   cross-reference warning from `pandoc-crossref`.
+2. Added a fallback package version so installations without Git metadata
+   report the new 1.3.3 release number consistently.
+3. Extracted LaTeX author metadata, normalizing it through new Lua filters so
+   DOCX outputs retain structured author, affiliation, and correspondence data.
+4. Detected bibliography hints from `\bibliography` and `\addbibresource`
+   commands to pass every resolved `.bib` file through Pandoc citation
+   processing automatically.
+5. Kept tables as native DOCX tables by default by converting `booktabs`
+   commands, enforcing three-line styling, and unwrapping `\resizebox`
+   wrappers; `--fix-table` now opt-in.
+6. Added an MCP stdio server entry point (`tex2docx-mcp`) with integration tests
+   so clients can invoke conversions over the Model Context Protocol.
+7. Guarded Pandoc and XeLaTeX subprocesses with explicit timeouts and improved
+   multiprocessing context selection to avoid stuck conversions.
+8. Auto-applied the Chinese caption locale when LaTeX content mixes in Chinese
+   characters and no explicit locale is provided.
+9. Raised the minimum supported Python version to 3.10 to align with MCP
+   dependencies.
 
 ### v1.3.2
 

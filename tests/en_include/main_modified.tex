@@ -44,33 +44,75 @@ This document is a test example designed to help check various LaTeX formatting 
 
 \section{Tables}
 
-There is a simple table in this section (Tab. \ref{tbl:tab_exampletable}).
-
+There is a simple table in this section (Tab. \ref{tbl:exampletable}).
 
 \begin{table}[htbp]
     \centering
     \caption{
         An example table with parameters.
     }
-    \label{tbl:tab_exampletable}
-    \begin{tabular}{l}
-    \includegraphics[width=\linewidth]{tab_exampletable.png}
+    \label{tbl:exampletable}
+    \begin{tabular}{lcr}
+        \hline
+        Parameter & Symbol & Value \\
+        \hline
+        Example Parameter 1 & $P_1$ & \SI{100}{\watt} \\
+        Example Parameter 2 & $P_2$ & \SI{50}{\meter} \\
+        Example Parameter 3 & $P_3$ & \SI{0.1}{\second} \\
+        \hline
     \end{tabular}
 \end{table}
 
+Tab. \ref{table3} shows a more complex table.
 
-Tab. \ref{tbl:tab_table3} shows a more complex table.
+\begin{table}[h]
+    \begin{center}
+        \begin{spacing}{1.15}
+         \caption{Example Global Economic Indicators}\label{table3}
+          \begin{tabular}{|c|c|c|}
+            \hline
+            \textbf{Region} & \textbf{Indicator} & \textbf{Value}  \\
+            \hline
 
+            \multirow{7}{*}{\makecell[{}{p{3cm}}]{Region A}} 
+            & \multirow{3}{*}{\makecell[{}{p{3cm}}]{Economic Growth}} 
+            & 3.5\%  \\
+            \cline{3-3}
+            &    & 1.5 trillion  \\
+            \cline{3-3}
+            &    & 4.8\% Inflation  \\
+            \cline{2-3}
 
-\begin{table}[htbp]
-    \centering
-    \caption{Example Global Economic Indicators}
-    \label{tbl:tab_table3}
-    \begin{tabular}{l}
-    \includegraphics[width=\linewidth]{tab_table3.png}
-    \end{tabular}
+            & \multirow{4}{*}{\makecell[{}{p{3cm}}]{Unemployment Rate}}  
+            & 5.1\%  \\
+            \cline{3-3}
+            &   & 2.4\% (Youth)  \\
+            \cline{3-3}
+            &   & 4.7\% (Women)  \\
+            \cline{3-3}
+            &   & 3.2\% (Men) \\
+            \hline
+
+            \multirow{6}{*}{\makecell[{}{p{3cm}}]{Region B}} 
+            & \multirow{3}{*}{\makecell[{}{p{3cm}}]{Economic Growth}} 
+            & 2.1\%  \\
+            \cline{3-3}
+            &    & 0.9 trillion  \\
+            \cline{3-3}
+            &    & 2.3\% Inflation  \\
+            \cline{2-3}
+
+            & \multirow{3}{*}{\makecell[{}{p{3cm}}]{Unemployment Rate}}  
+            & 6.7\%  \\
+            \cline{3-3}
+            &   & 3.8\% (Youth)  \\
+            \cline{3-3}
+            &   & 4.5\% (Total)  \\
+            \hline
+        \end{tabular}
+        \end{spacing}
+    \end{center}
 \end{table}
-
 
 \section{Figures and their References}
 
@@ -91,7 +133,7 @@ Below is an example figure (Fig. \ref{fig:multifig_examplefig}) showing a diagra
 
 \subsection{Subfigures}
 
-Below is an example of subfigures (Fig. \ref{fig:examplesubfigures}), which contains 4 subfigures (Fig. \ref{fig:multifig_examplesubfigures}(a), Fig. \ref{fig:multifig_examplesubfigures}(b), Fig. \ref{fig:multifig_examplesubfigures}(c), and Fig. \ref{fig:multifig_examplesubfigures}(d)).
+Below is an example of subfigures (Fig. \ref{fig:multifig_examplesubfigures}), which contains 4 subfigures (Fig. \ref{fig:multifig_examplesubfigures}(a), Fig. \ref{fig:multifig_examplesubfigures}(b), Fig. \ref{fig:multifig_examplesubfigures}(c), and Fig. \ref{fig:multifig_examplesubfigures}(d)).
 
 
 \begin{figure}[htbp]

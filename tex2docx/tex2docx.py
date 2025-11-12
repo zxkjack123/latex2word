@@ -31,7 +31,7 @@ class LatexToWordConverter:
         debug: bool = False,
         multifig_texfile_template: Union[str, None] = None,  # Deprecated
         multifig_figenv_template: Union[str, None] = None,
-        fix_table: bool = True,
+        fix_table: bool = False,
         caption_locale: Optional[str] = None,
         author_metadata: Optional[YamlValue] = None,
     ) -> None:
@@ -53,7 +53,7 @@ class LatexToWordConverter:
             multifig_figenv_template: Template for figure environments
                 in multi-figure LaTeX files. Defaults to built-in template.
             fix_table: Whether to fix tables by converting them to images.
-                Defaults to True.
+                Defaults to False.
         """
         # Issue deprecation warning for old parameter
         if multifig_texfile_template is not None:
@@ -69,6 +69,8 @@ class LatexToWordConverter:
         reference_path = (
             Path(reference_docfile) if reference_docfile is not None else None
         )
+
+        self._caption_locale_explicit = caption_locale is not None
 
         # Create configuration
         self.config = ConversionConfig(
@@ -117,6 +119,8 @@ class LatexToWordConverter:
             parser = LatexParser(self.config)
             parser.read_and_preprocess()
             parser.analyze_structure()
+            self._sync_author_metadata(parser)
+            self._sync_caption_locale(parser)
             
             # Step 2: Prepare temporary directory
             self.logger.info("Step 2: Preparing temporary directory")
@@ -186,6 +190,28 @@ class LatexToWordConverter:
                 file_manager.cleanup_temp_files()
             else:
                 file_manager.log_temp_file_locations()
+
+    def _sync_author_metadata(self, parser: LatexParser) -> None:
+        """Populate configuration author metadata when available."""
+
+        if self.config.author_metadata is not None:
+            return
+
+        if parser.author_metadata:
+            self.config.set_author_metadata(parser.author_metadata)
+            self.logger.debug("Author metadata extracted from LaTeX source")
+
+    def _sync_caption_locale(self, parser: LatexParser) -> None:
+        """Auto-adjust caption locale based on detected content."""
+
+        if self._caption_locale_explicit:
+            return
+
+        if parser.contains_chinese and self.config.caption_style.is_default():
+            self.config.apply_caption_preferences(locale="zh")
+            self.logger.debug(
+                "Caption locale auto-set to Chinese based on content"
+            )
 
 
 # Maintain backward compatibility by exposing the original interface

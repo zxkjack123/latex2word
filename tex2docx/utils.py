@@ -11,8 +11,8 @@ class PatternMatcher:
     
     @staticmethod
     def match_pattern(
-        pattern: str, 
-        content: str, 
+        pattern: str,
+        content: str,
         mode: str = "last"
     ) -> Union[str, List[str], None]:
         """
@@ -51,14 +51,25 @@ class PatternMatcher:
         Returns:
             'subfig', 'subfigure', or None if no specific package is detected.
         """
-        if (regex.search(TexPatterns.SUBFIG_PACKAGE, content) or 
-            regex.search(TexPatterns.SUBFIG_ENV, content)):
+        if regex.search(TexPatterns.SUBCAPTION_PACKAGE, content):
+            return "subcaption"
+
+        if (
+            regex.search(TexPatterns.SUBFIG_PACKAGE, content)
+            or regex.search(TexPatterns.SUBFIG_ENV, content)
+        ):
             return "subfig"
-        elif (regex.search(TexPatterns.SUBFIGURE_PACKAGE, content) or 
-              regex.search(TexPatterns.SUBFIGURE_ENV, content)):
+
+        if (
+            regex.search(TexPatterns.SUBFIGURE_PACKAGE, content)
+            or regex.search(TexPatterns.SUBFIGURE_COMMAND, content)
+        ):
             return "subfigure"
-        else:
-            return None
+
+        if regex.search(TexPatterns.SUBFIGURE_ENVIRONMENT, content):
+            return "subcaption"
+
+        return None
     
     @staticmethod
     def has_chinese_characters(content: str) -> bool:
@@ -108,6 +119,33 @@ class PatternMatcher:
         """Extract image paths referenced by \\includegraphics commands."""
         matches = regex.findall(TexPatterns.INCLUDEGRAPHICS_PATH, content)
         return [m.strip() for m in matches if m.strip()]
+
+    @staticmethod
+    def extract_bibliography_files(content: str) -> List[str]:
+        """Return bibliography file hints from LaTeX commands."""
+        files: List[str] = []
+
+        bibliography_matches = regex.findall(
+            TexPatterns.BIBLIOGRAPHY,
+            content,
+        )
+        for match in bibliography_matches:
+            parts = [part.strip() for part in match.split(",")]
+            files.extend(part for part in parts if part)
+
+        addbib_matches = regex.findall(
+            TexPatterns.ADDBIBRESOURCE,
+            content,
+        )
+        files.extend(item.strip() for item in addbib_matches if item.strip())
+
+        unique: List[str] = []
+        seen: set[str] = set()
+        for entry in files:
+            if entry not in seen:
+                seen.add(entry)
+                unique.append(entry)
+        return unique
 
 
 class TextProcessor:

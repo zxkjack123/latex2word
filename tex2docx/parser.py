@@ -4,10 +4,11 @@ import regex
 from pathlib import Path
 from typing import List, Optional, Set
 
-from .config import ConversionConfig
+from .config import ConversionConfig, YamlValue
 from .constants import TexPatterns
 from .exceptions import ParseError
 from .utils import PatternMatcher, TextProcessor
+from .authors import parse_author_metadata
 
 
 class LatexParser:
@@ -35,6 +36,7 @@ class LatexParser:
         self.include_directories: List[Path] = []
         self.figure_package: Optional[str] = None
         self.contains_chinese: bool = False
+        self.author_metadata: Optional[YamlValue] = None
     
     def read_and_preprocess(self) -> None:
         """Read the main TeX file and handle includes and comments."""
@@ -205,6 +207,9 @@ class LatexParser:
         )
         if self.contains_chinese:
             self.logger.debug("Detected Chinese characters in figures/tables")
+
+        self._extract_author_metadata()
+        self._detect_bibliography_file()
     
     def _determine_graphicspath(self) -> None:
         """Determine the graphics path from the LaTeX content."""
@@ -250,13 +255,101 @@ class LatexParser:
                 str(path) for path in self.include_directories
             ],
             "has_clean_content": self.clean_content is not None,
+            "has_author_metadata": self.author_metadata is not None,
         }
+
+    def _extract_author_metadata(self) -> None:
+        """Extract structured author metadata from the LaTeX content."""
+
+        if not self.clean_content:
+            return
+
+        metadata = parse_author_metadata(self.clean_content)
+        if metadata:
+            self.author_metadata = metadata
+            author_count = 0
+            if isinstance(metadata, dict):
+                authors_value = metadata.get("author")
+                if isinstance(authors_value, list):
+                    author_count = len(authors_value)
+                elif authors_value is not None:
+                    author_count = 1
+            elif isinstance(metadata, list):
+                author_count = len(metadata)
+            else:
+                author_count = 1
+            self.logger.debug(
+                "Extracted %d author entries from LaTeX metadata",
+                author_count,
+            )
 
     def _register_include_directory(self, directory: Path) -> None:
         """Track directories of included files for asset resolution."""
         resolved = directory.resolve()
         if resolved not in self.include_directories:
             self.include_directories.append(resolved)
+
+    def _detect_bibliography_file(self) -> None:
+        """Attempt to resolve bibliography files declared in LaTeX."""
+
+        if not self.clean_content:
+            return
+
+        candidates = PatternMatcher.extract_bibliography_files(
+            self.clean_content
+        )
+        if not candidates:
+            return
+
+        search_dirs = [self.input_file.parent] + self.include_directories
+        seen: set[Path] = set()
+        detected_any = False
+
+        for raw_candidate in candidates:
+            expanded = self._expand_bibliography_candidate(
+                raw_candidate,
+                search_dirs,
+            )
+            for path in expanded:
+                if path in seen:
+                    continue
+                seen.add(path)
+                if path.exists() and path.is_file():
+                    self.config.add_bibliography_file(path)
+                    self.logger.debug(
+                        "Detected bibliography file: %s",
+                        path,
+                    )
+                    detected_any = True
+
+        if not detected_any:
+            self.logger.debug(
+                "No bibliography file resolved from LaTeX commands"
+            )
+
+    def _expand_bibliography_candidate(
+        self,
+        raw_candidate: str,
+        base_directories: List[Path],
+    ) -> List[Path]:
+        """Expand bibliography hints into candidate file paths."""
+
+        candidate = Path(raw_candidate).expanduser()
+        targets: List[Path] = []
+
+        if candidate.is_absolute():
+            targets.append(candidate)
+        else:
+            for base in base_directories:
+                targets.append((base / candidate).resolve())
+
+        expanded: List[Path] = []
+        for target in targets:
+            expanded.append(target)
+            if target.suffix.lower() != ".bib":
+                expanded.append(target.with_suffix(".bib"))
+
+        return expanded
 
     def _resolve_graphicspath_entries(
         self,

@@ -76,7 +76,7 @@ class LatexToWordConverter:
         debug: bool = False,
         multifig_texfile_template: str | None = None, # Deprecated
         multifig_figenv_template: str | None = None,
-        fix_table: bool = True,
+        fix_table: bool = False,
     ) -> None:
         """
         Initializes the main class of the latex2word tool.
@@ -99,7 +99,7 @@ class LatexToWordConverter:
                 environment in multi-figure LaTeX files. Defaults to
                 class attribute.
             fix_table: Whether to fix tables by converting them to
-                images. Defaults to True.
+                images. Defaults to False.
         """
         self._setup_paths(
             input_texfile, output_docxfile, bibfile, cslfile, reference_docfile

@@ -18,11 +18,17 @@ class TexPatterns:
     INCLUDEGRAPHICS_PATH: Final[str] = (
         r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}"
     )
+    BIBLIOGRAPHY: Final[str] = r"\\bibliography\{([^{}]+)\}"
+    ADDBIBRESOURCE: Final[str] = (
+        r"\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}"
+    )
     COMMENT: Final[str] = r"((?<!\\)%.*\n)"
+    SUBCAPTION_PACKAGE: Final[str] = r"\\usepackage\{subcaption\}"
     SUBFIG_PACKAGE: Final[str] = r"\\usepackage\{subfig\}"
     SUBFIGURE_PACKAGE: Final[str] = r"\\usepackage\{subfigure\}"
     SUBFIG_ENV: Final[str] = r"\\begin\{subfig\}|\\subfloat"
-    SUBFIGURE_ENV: Final[str] = r"\\begin\{subfigure\}|\\subfigure"
+    SUBFIGURE_ENVIRONMENT: Final[str] = r"\\begin\{subfigure\}"
+    SUBFIGURE_COMMAND: Final[str] = r"\\subfigure"
     CHINESE_CHAR: Final[str] = r"[\u4e00-\u9fff]"
     LINEWIDTH: Final[str] = r"\\linewidth|\\textwidth"
     CM_UNIT: Final[str] = r"\d+cm"
@@ -100,6 +106,10 @@ class PandocOptions:
         "--citeproc",
     ]
 
+    # Abort Pandoc if it runs longer than this many seconds to
+    # prevent conversions from hanging indefinitely.
+    TIMEOUT: Final[int] = 900
+
     METADATA_FILE: Final[Path] = Path(__file__).with_name(
         "pandoc_crossref_metadata.yaml"
     )
@@ -116,3 +126,8 @@ class CompilerOptions:
 
     # Default number of parallel compilation workers used for XeLaTeX.
     MAX_WORKERS: Final[int] = 4
+
+    # Fail fast if XeLaTeX takes longer than this per subfile (seconds).
+    XELATEX_TIMEOUT: Final[int] = 300
+
+

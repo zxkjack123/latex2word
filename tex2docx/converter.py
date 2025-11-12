@@ -2,7 +2,11 @@
 
 import shutil
 import subprocess
+import tempfile
+import zipfile
+from pathlib import Path
 from typing import List, Optional
+from xml.etree import ElementTree as ET
 
 from .config import ConversionConfig
 from .constants import PandocOptions
@@ -33,6 +37,9 @@ class PandocConverter:
         # Build and run command
         command = self._build_pandoc_command()
         self._run_pandoc(command)
+
+        # Apply table styling adjustments to match three-line formatting
+        self._apply_docx_table_styling()
     
     def _check_dependencies(self) -> None:
         """Check that required external dependencies are available."""
@@ -105,14 +112,14 @@ class PandocConverter:
         """Validate that required files exist."""
         output_texfile = self.config.output_texfile
         reference_docfile = self.config.reference_docfile
-        luafile = self.config.luafile
+        lua_filters = self.config.get_lua_filters()
 
         if output_texfile is None:
             raise FileNotFoundError("Modified TeX file path not configured.")
         if reference_docfile is None:
             raise FileNotFoundError("Reference document path not configured.")
-        if luafile is None:
-            raise FileNotFoundError("Lua filter path not configured.")
+        if not lua_filters:
+            raise FileNotFoundError("Lua filters not configured.")
 
         if not output_texfile.exists():
             raise FileNotFoundError(
@@ -124,8 +131,15 @@ class PandocConverter:
                 f"Reference document not found: {reference_docfile}"
             )
 
-        if not luafile.exists():
-            raise FileNotFoundError(f"Lua filter not found: {luafile}")
+        missing_filters = [
+            str(path)
+            for path in lua_filters
+            if not path.exists()
+        ]
+        if missing_filters:
+            raise FileNotFoundError(
+                "Lua filter not found: " + ", ".join(missing_filters)
+            )
     
     def _build_pandoc_command(self) -> List[str]:
         """
@@ -136,11 +150,11 @@ class PandocConverter:
         """
         output_texfile = self.config.output_texfile
         output_docxfile = self.config.output_docxfile
-        luafile = self.config.luafile
+        lua_filters = self.config.get_lua_filters()
         reference_docfile = self.config.reference_docfile
 
-        if luafile is None:
-            raise FileNotFoundError("Lua filter path not configured.")
+        if not lua_filters:
+            raise FileNotFoundError("Lua filters not configured.")
         if reference_docfile is None:
             raise FileNotFoundError("Reference document path not configured.")
 
@@ -151,11 +165,12 @@ class PandocConverter:
             str(output_docxfile.name),  # Output file
         ]
         
-        # Add Lua filter
-        command.extend([
-            "--lua-filter",
-            str(luafile.resolve()),
-        ])
+        # Add Lua filters
+        for luafile in lua_filters:
+            command.extend([
+                "--lua-filter",
+                str(luafile.resolve()),
+            ])
         
         # Add filters
         command.extend(PandocOptions.FILTER_OPTIONS)
@@ -187,12 +202,7 @@ class PandocConverter:
     
     def _should_add_citations(self) -> bool:
         """Check if citation processing should be enabled."""
-        bibfile = self.config.bibfile
-        return (
-            bibfile is not None and
-            bibfile.exists() and
-            bibfile.is_file()
-        )
+        return self.config.has_bibliography()
     
     def _get_citation_options(self) -> List[str]:
         """
@@ -201,23 +211,37 @@ class PandocConverter:
         Returns:
             List of citation options.
         """
-        bibfile = self.config.bibfile
+        bibliography_files = self.config.get_bibliography_files()
         cslfile = self.config.cslfile
 
-        if bibfile is None:
-            raise FileNotFoundError("Bibliography file not configured.")
+        if not bibliography_files:
+            raise FileNotFoundError("Bibliography files not configured.")
         if cslfile is None:
             raise FileNotFoundError("CSL file not configured.")
 
         if not cslfile.exists() or not cslfile.is_file():
             raise FileNotFoundError(f"CSL file not found: {cslfile}")
-        
-        return PandocOptions.CITATION_OPTIONS + [
-            "--bibliography",
-            str(bibfile.resolve()),
+
+        citation_args = list(PandocOptions.CITATION_OPTIONS)
+
+        added = False
+        for bibfile in bibliography_files:
+            if bibfile.exists() and bibfile.is_file():
+                citation_args.extend([
+                    "--bibliography",
+                    str(bibfile.resolve()),
+                ])
+                added = True
+
+        if not added:
+            raise FileNotFoundError("No valid bibliography files found.")
+
+        citation_args.extend([
             "--csl",
             str(cslfile.resolve()),
-        ]
+        ])
+
+        return citation_args
     
     def _run_pandoc(self, command: List[str]) -> None:
         """
@@ -246,7 +270,8 @@ class PandocConverter:
                 stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
-                errors="replace"
+                errors="replace",
+                timeout=PandocOptions.TIMEOUT,
             )
             
             self.logger.info(
@@ -260,6 +285,26 @@ class PandocConverter:
             if result.stdout:
                 self.logger.debug(f"Pandoc stdout:\n{result.stdout}")
                 
+        except subprocess.TimeoutExpired as exc:
+            timeout_seconds = PandocOptions.TIMEOUT
+            self.logger.error(
+                "Pandoc conversion exceeded timeout (%s seconds)",
+                timeout_seconds,
+            )
+            if exc.stderr:
+                self.logger.error(
+                    "Pandoc stderr before timeout:\n%s",
+                    exc.stderr,
+                )
+            if exc.stdout:
+                self.logger.debug(
+                    "Pandoc stdout before timeout:\n%s",
+                    exc.stdout,
+                )
+            raise ConversionError(
+                "Pandoc conversion timed out after "
+                f"{timeout_seconds} seconds."
+            ) from exc
         except subprocess.CalledProcessError as e:
             error_msg = (
                 f"Pandoc conversion failed (return code: {e.returncode})\n"
@@ -273,3 +318,122 @@ class PandocConverter:
                 f"Unexpected error during Pandoc conversion: {e}"
             )
             raise ConversionError(f"Unexpected conversion error: {e}")
+
+    def _apply_docx_table_styling(self) -> None:
+        """Post-process the DOCX to enforce three-line table styling."""
+        output_docxfile = self.config.output_docxfile
+        if output_docxfile is None or not output_docxfile.exists():
+            return
+
+        try:
+            with zipfile.ZipFile(output_docxfile, "r") as archive:
+                try:
+                    document_xml = archive.read("word/document.xml")
+                except KeyError:
+                    self.logger.warning(
+                        "Missing word/document.xml in DOCX; skip table styling"
+                    )
+                    return
+        except zipfile.BadZipFile:
+            self.logger.warning(
+                "Unable to open DOCX archive for styling adjustments"
+            )
+            return
+
+        try:
+            root = ET.fromstring(document_xml)
+        except ET.ParseError as exc:
+            self.logger.warning(
+                "Failed to parse document.xml (%s); skipping table styling",
+                exc,
+            )
+            return
+
+        namespaces = {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        }
+
+        modified = False
+        for tbl in root.findall(".//w:tbl", namespaces):
+            if self._style_docx_table(tbl, namespaces):
+                modified = True
+
+        if not modified:
+            return
+
+        updated_xml = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_dir = Path(tmpdir)
+            with zipfile.ZipFile(output_docxfile, "r") as src:
+                src.extractall(temp_dir)
+
+            document_path = temp_dir / "word" / "document.xml"
+            document_path.write_bytes(updated_xml)
+
+            temp_docx = temp_dir / "styled.docx"
+            with zipfile.ZipFile(temp_docx, "w", zipfile.ZIP_DEFLATED) as dest:
+                for item in sorted(temp_dir.rglob("*")):
+                    if item == temp_docx:
+                        continue
+                    if item.is_file():
+                        dest.write(item, item.relative_to(temp_dir))
+
+            shutil.move(str(temp_docx), output_docxfile)
+            self.logger.debug("Applied three-line styling to DOCX tables")
+
+    @staticmethod
+    def _style_docx_table(tbl: ET.Element, namespaces: dict) -> bool:
+        """Ensure a table has top, header, and bottom rules."""
+        ns = namespaces["w"]
+        modified = False
+
+        tbl_pr = tbl.find("w:tblPr", namespaces)
+        if tbl_pr is None:
+            tbl_pr = ET.SubElement(tbl, f"{{{ns}}}tblPr")
+
+        tbl_borders = tbl_pr.find("w:tblBorders", namespaces)
+        if tbl_borders is None:
+            tbl_borders = ET.SubElement(tbl_pr, f"{{{ns}}}tblBorders")
+
+        if PandocConverter._ensure_border(tbl_borders, namespaces, "top"):
+            modified = True
+        if PandocConverter._ensure_border(tbl_borders, namespaces, "bottom"):
+            modified = True
+
+        first_row = tbl.find("w:tr", namespaces)
+        if first_row is not None:
+            tr_pr = first_row.find("w:trPr", namespaces)
+            if tr_pr is None:
+                tr_pr = ET.SubElement(first_row, f"{{{ns}}}trPr")
+            tr_borders = tr_pr.find("w:trBorders", namespaces)
+            if tr_borders is None:
+                tr_borders = ET.SubElement(tr_pr, f"{{{ns}}}trBorders")
+            if PandocConverter._ensure_border(
+                tr_borders, namespaces, "bottom"
+            ):
+                modified = True
+
+        return modified
+
+    @staticmethod
+    def _ensure_border(
+        parent: ET.Element,
+        namespaces: dict,
+        position: str,
+    ) -> bool:
+        """Create or update a DOCX border element."""
+        ns = namespaces["w"]
+        border = parent.find(f"w:{position}", namespaces)
+        if border is None:
+            border = ET.SubElement(parent, f"{{{ns}}}{position}")
+            modified = True
+        else:
+            modified = False
+
+        border.set(f"{{{ns}}}val", "single")
+        border.set(f"{{{ns}}}sz", "12")
+        border.set(f"{{{ns}}}space", "0")
+        border.set(f"{{{ns}}}color", "auto")
+
+        return modified
