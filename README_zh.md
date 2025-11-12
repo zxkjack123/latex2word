@@ -217,12 +217,14 @@ pandoc texfile -o docxfile \
    将所有可用文献库自动交给 Pandoc 引用流程处理。
 5. 默认保留表格为原生 DOCX 表格，转换 `booktabs` 命令、添加三线表样式，
    并解包 `\resizebox` 包裹；`--fix-table` 现改为按需启用。
-6. 新增 MCP stdio 服务入口 `tex2docx-mcp`，并提供集成测试，便于客户端
+6. 将化学式与单位指数等简单内联数学转换为普通文本的上下标，
+   确保 `CO₂`、`m³`、`^{203}\mathrm{Pb}` 等在 DOCX 中保持直立字体。
+7. 新增 MCP stdio 服务入口 `tex2docx-mcp`，并提供集成测试，便于客户端
    通过 Model Context Protocol 调用转换任务。
-7. 为 Pandoc 与 XeLaTeX 子进程添加显式超时时间，并改进并行编译时的进程
+8. 为 Pandoc 与 XeLaTeX 子进程添加显式超时时间，并改进并行编译时的进程
    上下文选择，避免阻塞。
-8. 当自动检测到文档包含中文且未指定 locale 时，自动切换 caption 本地化为中文。
-9. 最低支持的 Python 版本提升至 3.10，以满足 MCP 相关依赖要求。
+9. 当自动检测到文档包含中文且未指定 locale 时，自动切换 caption 本地化为中文。
+10. 最低支持的 Python 版本提升至 3.10，以满足 MCP 相关依赖要求。
 
 ### v1.3.2
 

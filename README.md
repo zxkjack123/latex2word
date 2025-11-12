@@ -213,13 +213,16 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
 5. Kept tables as native DOCX tables by default by converting `booktabs`
    commands, enforcing three-line styling, and unwrapping `\resizebox`
    wrappers; `--fix-table` now opt-in.
-6. Added an MCP stdio server entry point (`tex2docx-mcp`) with integration tests
+6. Normalized inline chemical formulas and unit exponents into text-based
+   superscript/subscript runs so DOCX keeps upright glyphs for strings such as
+   `CO₂`, `m³`, and `^{203}\mathrm{Pb}`.
+7. Added an MCP stdio server entry point (`tex2docx-mcp`) with integration tests
    so clients can invoke conversions over the Model Context Protocol.
-7. Guarded Pandoc and XeLaTeX subprocesses with explicit timeouts and improved
+8. Guarded Pandoc and XeLaTeX subprocesses with explicit timeouts and improved
    multiprocessing context selection to avoid stuck conversions.
-8. Auto-applied the Chinese caption locale when LaTeX content mixes in Chinese
+9. Auto-applied the Chinese caption locale when LaTeX content mixes in Chinese
    characters and no explicit locale is provided.
-9. Raised the minimum supported Python version to 3.10 to align with MCP
+10. Raised the minimum supported Python version to 3.10 to align with MCP
    dependencies.
 
 ### v1.3.2

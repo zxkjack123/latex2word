@@ -15,6 +15,7 @@ Test categories:
 """
 
 import asyncio
+import json
 import logging
 import subprocess
 import tempfile
@@ -430,6 +431,83 @@ class TestContentModifier:
 
         assert "\\resizebox" not in modifier.modified_content
         assert "\\begin{tabular}{cc}" in modifier.modified_content
+
+
+class TestMathTextFilter:
+    """Unit coverage for the inline math normalization filter."""
+
+    FILTER_PATH = (
+        Path(__file__).resolve().parent.parent
+        / "tex2docx"
+        / "math_text.lua"
+    )
+
+    @classmethod
+    def _run_filter(cls, latex: str) -> Dict[str, object]:
+        """Execute Pandoc with the math_text filter and return JSON."""
+
+        command = [
+            "pandoc",
+            "-f",
+            "latex",
+            "-t",
+            "json",
+            "--lua-filter",
+            str(cls.FILTER_PATH),
+        ]
+
+        result = subprocess.run(
+            command,
+            input=latex.encode("utf-8"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+
+        return json.loads(result.stdout.decode("utf-8"))
+
+    @staticmethod
+    def _extract_inlines(payload: Dict[str, object]) -> list:
+        """Return the inline list from the first block of the payload."""
+
+        blocks = payload.get("blocks", [])
+        if not blocks:
+            return []
+        return blocks[0].get("c", [])
+
+    def test_converts_simple_formula(self) -> None:
+        """CO_{2} is rewritten as text plus a subscript."""
+
+        payload = self._run_filter("$CO_{2}$")
+        inlines = self._extract_inlines(payload)
+
+        assert [inline["t"] for inline in inlines] == ["Str", "Subscript"]
+        assert inlines[0]["c"] == "CO"
+        assert inlines[1]["c"][0]["c"] == "2"
+
+    def test_preserves_general_math(self) -> None:
+        """Polynomial expressions remain math objects."""
+
+        payload = self._run_filter("$a^2 + b^2$")
+        inlines = self._extract_inlines(payload)
+
+        assert len(inlines) == 1
+        assert inlines[0]["t"] == "Math"
+
+    def test_converts_nuclear_notation(self) -> None:
+        """Nuclear isotope notation keeps upright glyphs."""
+
+        payload = self._run_filter("$^{203}_{82}\\mathrm{Pb}$")
+        inlines = self._extract_inlines(payload)
+
+        assert [inline["t"] for inline in inlines] == [
+            "Superscript",
+            "Subscript",
+            "Str",
+        ]
+        assert inlines[0]["c"][0]["c"] == "203"
+        assert inlines[1]["c"][0]["c"] == "82"
+        assert inlines[2]["c"] == "Pb"
 
 
 class TestLatexParser:

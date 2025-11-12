@@ -227,6 +227,7 @@ class ConversionConfig:
             (package_dir / "author-info-blocks.lua").resolve(),
         ]
         self.lua_filters = [
+            (package_dir / "math_text.lua").resolve(),
             (package_dir / "resolve_equation_labels.lua").resolve(),
         ]
 
