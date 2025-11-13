@@ -196,7 +196,31 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
     removing figures, tables, or equations in Word, rerun the converter instead
     of relying on Word to refresh the numbers.
 
+## Regression Checks
+
+Use the bundled fixtures to confirm formatting changes before releasing:
+
+```bash
+.venv/bin/tex2docx convert \
+  --input-texfile tests/en/mixed_content.tex \
+  --output-docxfile /tmp/mixed_content_centered.docx
+
+.venv/bin/tex2docx convert \
+  --input-texfile tests/en/mixed_content_complex.tex \
+  --output-docxfile /tmp/mixed_content_complex_centered.docx
+```
+
+Inspect the generated DOCX files in Word to ensure tables and figures stay
+centered and that chemical notation renders upright.
+
 ## Changelog
+
+### v1.3.6
+
+- Document the regression workflow for re-running centering checks and sample
+   conversions.
+- Revalidated the full pytest suite after the centering adjustments to ensure
+   no regressions slipped in.
 
 ### v1.3.5
 
