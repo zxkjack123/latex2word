@@ -158,11 +158,13 @@ class PandocConverter:
         if reference_docfile is None:
             raise FileNotFoundError("Reference document path not configured.")
 
+        output_docxfile.parent.mkdir(parents=True, exist_ok=True)
+
         command = [
             "pandoc",
             str(output_texfile.name),  # Input file (relative to CWD)
             "-o",
-            str(output_docxfile.name),  # Output file
+            str(output_docxfile),  # Absolute output file
         ]
         
         # Add Lua filters
@@ -350,13 +352,23 @@ class PandocConverter:
             return
 
         namespaces = {
-            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+            "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
         }
+
+        # Register namespaces to preserve prefixes during serialization
+        for prefix, uri in namespaces.items():
+            ET.register_namespace(prefix, uri)
 
         modified = False
         for tbl in root.findall(".//w:tbl", namespaces):
             if self._style_docx_table(tbl, namespaces):
                 modified = True
+
+        # Mark all superscripts and subscripts as non-italic (upright)
+        if self._ensure_upright_scripts(root, namespaces):
+            modified = True
 
         if not modified:
             return
@@ -412,6 +424,57 @@ class PandocConverter:
             if PandocConverter._ensure_border(
                 tr_borders, namespaces, "bottom"
             ):
+                modified = True
+
+        return modified
+
+    @staticmethod
+    def _ensure_upright_scripts(root: ET.Element, namespaces: dict) -> bool:
+        """
+        Mark all superscript and subscript runs as non-italic (upright).
+        
+        This ensures chemical formulas, isotope notation, and unit exponents
+        display with upright numerals rather than inheriting italic styling.
+        
+        Args:
+            root: Document root element.
+            namespaces: XML namespace mappings.
+            
+        Returns:
+            True if any runs were modified.
+        """
+        ns = namespaces["w"]
+        modified = False
+
+        # Find all runs with superscript or subscript alignment
+        for run in root.findall(".//w:r", namespaces):
+            r_pr = run.find("w:rPr", namespaces)
+            if r_pr is None:
+                continue
+
+            vert_align = r_pr.find("w:vertAlign", namespaces)
+            if vert_align is None:
+                continue
+
+            val = vert_align.get(f"{{{ns}}}val")
+            if val not in ("superscript", "subscript"):
+                continue
+
+            # Check if italic setting already exists
+            italic = r_pr.find("w:i", namespaces)
+            if italic is not None:
+                # Already has italic setting; check if it's already false
+                existing_val = italic.get(f"{{{ns}}}val")
+                if existing_val in ("0", "false"):
+                    continue
+                # Update existing italic to false
+                italic.set(f"{{{ns}}}val", "0")
+                modified = True
+            else:
+                # Add new italic=false property
+                italic = ET.Element(f"{{{ns}}}i")
+                italic.set(f"{{{ns}}}val", "0")
+                r_pr.append(italic)
                 modified = True
 
         return modified

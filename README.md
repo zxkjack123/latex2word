@@ -193,10 +193,19 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
 
 1. Author information is not fully converted.
 2. Cross-reference numbering in the DOCX output is static. After adding or
-   removing figures, tables, or equations in Word, rerun the converter instead
-   of relying on Word to refresh the numbers.
+    removing figures, tables, or equations in Word, rerun the converter instead
+    of relying on Word to refresh the numbers.
 
 ## Changelog
+
+### v1.3.4
+
+- Normalize `\SI`, `\si`, and `\num` commands to plain text so DOCX renders
+   upright SI units.
+- Convert legacy `\mathrm` unit fragments while warning when expressions do
+   not follow SCI-compliant syntax, guiding authors to adopt `siunitx` macros.
+- Add documentation for the DOCX validator CLI and regression fixtures that
+   cover mixed-content LaTeX samples.
 
 ### v1.3.3
 

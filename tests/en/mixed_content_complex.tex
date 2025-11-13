@@ -1,0 +1,83 @@
+\documentclass{article}
+\usepackage{siunitx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+
+\begin{document}
+
+\section*{Mixed Content Validation}
+
+This scenario exercises a mixture of inline math, chemical notation, and
+standard equations to verify conversion fidelity. Sampling records show
+that $\mathrm{CO}_{2}$ concentration stayed below $480\,\mathrm{ppm}$ while
+coolant temperature remained under $\SI{315}{\kelvin}$. The reactor outlet
+flow averaged $18\,\mathrm{m}^{3}/\mathrm{s}$ and the density was
+$1.25\,\mathrm{kg}/\mathrm{m}^{3}$.
+
+We observed the daughter product $^{203}_{82}\mathrm{Pb}$ alongside the
+intermediate isotope $^{99}\mathrm{Mo}$. Catalytic activity compared two
+samples: $c_{\mathrm{eq},1}$ tracked reference behavior and
+$c_{\mathrm{eq},2}$ monitored enriched feed. Reaction stoichiometry for
+methane oxidation follows
+$\mathrm{CH}_{4} + 2\,\mathrm{O}_{2} \rightarrow \mathrm{CO}_{2} + 2\,\mathrm{H}_{2}\mathrm{O}$.
+
+\subsection*{Inline and Display Math}
+
+Transient state estimates used the recurrence
+$x_{i+1} = \alpha x_i + \beta u_i + \gamma$ with
+$u_i = k_p (r_i - x_i)$. The energy balance introduced the integral
+
+\begin{align}
+E(t) &= E_0 + \int_{0}^{t} \dot{Q}(\tau)\,\mathrm{d}\tau, \\
+\Phi(t) &= \exp(-\lambda t) \sin(\omega t).
+\end{align}
+
+To keep notation consistent, spectral radius constraints employed
+$\rho(A) < 1$ and the variance update used
+$\sigma_{k+1}^{2} = (1 - g_k h_k)\sigma_{k}^{2} + g_k^{2}\sigma_{v}^{2}$.
+
+\subsection*{Chemical and Unit Notation}
+
+The aqueous equilibrium constant was reported as
+$K_\mathrm{eq} = \frac{[\mathrm{HCO}_{3}^{-}]\,[\mathrm{H}^{+}]}{[\mathrm{H}_{2}\mathrm{CO}_{3}]}$, while the
+reaction pathway featured the intermediate HO-CH$_2$-COO$^{-}$. A secondary
+analysis leveraged $^{99m}\mathrm{Tc}$ imaging, referencing the decay chain
+$^{99}\mathrm{Mo} \xrightarrow{\gamma} {}^{99m}\mathrm{Tc} + \gamma$. Mass transfer coefficients
+were recorded as $1.8\,\mathrm{mol}/(\mathrm{m}^{2}\,\mathrm{s})$ and diffusion
+coefficients as $2.4\times10^{-9}\,\mathrm{m}^{2}/\mathrm{s}$.
+
+\subsection*{Tabular Data}
+
+\sisetup{table-format=2.2}
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcr}
+        \toprule
+        Quantity & \multicolumn{1}{c}{Measurement} & Representation \\
+        \midrule
+        Density & \SI{1.25}{\kilogram\per\meter^{3}} & $1.25\,\mathrm{kg}/\mathrm{m}^{3}$ \\
+        Flow rate & \SI{18}{\cubic\meter\per\second} & $18\,\mathrm{m}^{3}/\mathrm{s}$ \\
+        Half-life & \SI{66}{\hour} & $^{99}\mathrm{Mo}$ sample \\
+        Conductivity & \SI{5.6}{\siemens\per\meter} & $5.6\,\mathrm{S}/\mathrm{m}$ \\
+        Diffusion & \num{2.4e-9} & $2.4\times10^{-9}\,\mathrm{m}^{2}/\mathrm{s}$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Measurements mixing unit syntax and inline math.}
+    \label{tab:mixed}
+\end{table}
+
+\subsection*{Enumerated Checks}
+
+\begin{enumerate}
+    \item Verify that $c_{\mathrm{eq},1}$ and $c_{\mathrm{eq},2}$ stay as
+    upright text.
+    \item Confirm $x_{i+1} = x_i + \Delta x$ stays in OMML math.
+    \item Ensure unit fractions such as $15\,\mathrm{m}^{3}/\mathrm{s}$ render
+    without italics.
+    \item Check isotope notation $^{235}\mathrm{U}$ and
+    $^{60}\mathrm{Co}$ remain plain text.
+    \item Validate chemical ratios like
+    $\frac{n_{\mathrm{CO}_{2}}}{n_{\mathrm{CH}_{4}}}$ keep subscripts upright.
+\end{enumerate}
+
+\end{document}

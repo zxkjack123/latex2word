@@ -8,7 +8,7 @@ conversions and checking that output files are generated successfully.
 Test scenarios:
 - Basic English document conversion
 - English document with chapters
-- English document with includes  
+- English document with includes
 - Chinese document conversion
 
 Note: These tests require manual verification of the generated Word documents
@@ -467,6 +467,73 @@ def test_multiple_citations_render(tmp_path: Path) -> None:
     assert "comprehensive guide to testing" in normalized
     assert "advanced conversion workflows" in normalized
     assert "edge cases in document pipelines" in normalized
+
+
+def test_mixed_content_document(tmp_path: Path) -> None:
+    """Mixed inline math stays classified correctly after conversion."""
+
+    input_texfile = TEST_DIR / "en/mixed_content.tex"
+    output_docxfile = TEST_DIR / "en/mixed_content.docx"
+
+    converter = LatexToWordConverter(
+        input_texfile=input_texfile,
+        output_docxfile=output_docxfile,
+        debug=False,
+    )
+
+    converter.convert()
+
+    try:
+        assert output_docxfile.exists()
+
+        with zipfile.ZipFile(output_docxfile) as zf:
+            xml_bytes = zf.read("word/document.xml")
+        xml_text = xml_bytes.decode("utf-8")
+
+        assert "203" in xml_text and "Pb" in xml_text
+        assert "15" in xml_text and "/s" in xml_text
+
+        assert "<m:t>203<" not in xml_text
+        assert "<m:t>Pb<" not in xml_text
+
+        assert "<m:oMath" in xml_text
+        assert "<m:t>x</m:t>" in xml_text or "<m:t>x_i" in xml_text
+    finally:
+        if output_docxfile.exists():
+            output_docxfile.unlink()
+
+
+def test_mixed_content_complex_document(tmp_path: Path) -> None:
+    """Complex chemical notation converts without spurious math runs."""
+
+    input_texfile = TEST_DIR / "en/mixed_content_complex.tex"
+    output_docxfile = tmp_path / "mixed_content_complex.docx"
+
+    converter = LatexToWordConverter(
+        input_texfile=input_texfile,
+        output_docxfile=output_docxfile,
+        debug=False,
+    )
+
+    converter.convert()
+
+    actual_output = Path(converter.config.output_docxfile)
+
+    try:
+        assert actual_output.exists()
+
+        with zipfile.ZipFile(actual_output) as zf:
+            xml_text = zf.read("word/document.xml").decode("utf-8")
+
+        assert "→" in xml_text
+        assert "×10" in xml_text
+        assert "ns1:t>CH" not in xml_text
+        assert "CH" in xml_text
+        assert "ns1:t>15" not in xml_text
+        assert "COO" in xml_text
+    finally:
+        if actual_output.exists() and actual_output.is_file():
+            actual_output.unlink()
 
 
 def test_numbered_references_roundtrip(tmp_path: Path) -> None:

@@ -293,7 +293,10 @@ class TestContentModifier:
 
     def _make_modifier(self, tmp_path: Path) -> ContentModifier:
         input_tex = tmp_path / "source.tex"
-        input_tex.write_text("\\documentclass{article}\n\\begin{document}x\\end{document}")
+        input_tex.write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}x\\end{document}"
+        )
         output_docx = tmp_path / "output.docx"
         config = ConversionConfig(
             input_texfile=input_tex,
@@ -302,7 +305,9 @@ class TestContentModifier:
         )
         return ContentModifier(config)
 
-    def test_updates_subfigure_refs_with_captions(self, tmp_path: Path) -> None:
+    def test_updates_subfigure_refs_with_captions(
+        self, tmp_path: Path
+    ) -> None:
         """Subfigure labels preceding captions are remapped with suffixes."""
 
         modifier = self._make_modifier(tmp_path)
@@ -334,8 +339,12 @@ class TestContentModifier:
         modifier._update_subfigure_references(original, "fig:multifig_demo")
         modifier._update_main_reference(original, "fig:multifig_demo")
 
-        assert "figure~\\ref{fig:multifig_demo}(a)" in modifier.modified_content
-        assert "figure~\\ref{fig:multifig_demo}(b)" in modifier.modified_content
+        assert (
+            "figure~\\ref{fig:multifig_demo}(a)" in modifier.modified_content
+        )
+        assert (
+            "figure~\\ref{fig:multifig_demo}(b)" in modifier.modified_content
+        )
         assert "figure~\\ref{fig:multifig_demo}." in modifier.modified_content
 
     def test_normalizes_tab_prefix_labels(self, tmp_path: Path) -> None:
@@ -494,6 +503,15 @@ class TestMathTextFilter:
         assert len(inlines) == 1
         assert inlines[0]["t"] == "Math"
 
+    def test_preserves_indexed_variables(self) -> None:
+        """Indexed variables stay in math form."""
+
+        payload = self._run_filter("$x_i$")
+        inlines = self._extract_inlines(payload)
+
+        assert len(inlines) == 1
+        assert inlines[0]["t"] == "Math"
+
     def test_converts_nuclear_notation(self) -> None:
         """Nuclear isotope notation keeps upright glyphs."""
 
@@ -502,12 +520,183 @@ class TestMathTextFilter:
 
         assert [inline["t"] for inline in inlines] == [
             "Superscript",
-            "Subscript",
             "Str",
         ]
         assert inlines[0]["c"][0]["c"] == "203"
-        assert inlines[1]["c"][0]["c"] == "82"
-        assert inlines[2]["c"] == "Pb"
+        assert inlines[1]["c"] == "Pb"
+
+    def test_converts_unit_fraction(self) -> None:
+        """Unit expressions with slashes are converted to plain text."""
+
+        payload = self._run_filter("$15\\,\\mathrm{m}^{3}/\\mathrm{s}$")
+        inlines = self._extract_inlines(payload)
+
+        assert [inline["t"] for inline in inlines] == [
+            "Str",
+            "Superscript",
+            "Str",
+        ]
+        assert inlines[0]["c"] == "15 m"
+        assert inlines[1]["c"][0]["c"] == "3"
+        assert inlines[2]["c"] == "/s"
+
+    def test_converts_unit_with_times(self) -> None:
+        """Scientific notation with \times remains upright text."""
+
+        payload = self._run_filter(
+            "$2.4\\times10^{-9}\\,\\mathrm{m}^{2}/\\mathrm{s}$"
+        )
+        inlines = self._extract_inlines(payload)
+
+        kinds = [inline["t"] for inline in inlines]
+        assert "Math" not in kinds
+        rendered = "".join(
+            inline["c"]
+            if inline["t"] == "Str"
+            else "^" + inline["c"][0]["c"] + "^"
+            for inline in inlines
+        )
+        assert "×" in rendered
+
+    def test_converts_siunitx_kelvin(self) -> None:
+        """Simple \SI commands render as plain text."""
+
+        payload = self._run_filter("$\\SI{315}{\\kelvin}$")
+        inlines = self._extract_inlines(payload)
+
+        kinds = [inline["t"] for inline in inlines]
+        assert "Math" not in kinds
+
+        rendered = "".join(
+            inline["c"]
+            if inline["t"] == "Str"
+            else "".join(child["c"] for child in inline["c"])
+            for inline in inlines
+        )
+        assert "315" in rendered
+        assert "K" in rendered
+
+    def test_converts_siunitx_complex_unit(self) -> None:
+        """Compound \SI units keep superscripts and slashes."""
+
+        payload = self._run_filter(
+            "$\\SI{18}{\\cubic\\meter\\per\\second}$"
+        )
+        inlines = self._extract_inlines(payload)
+
+        kinds = [inline["t"] for inline in inlines]
+        assert "Math" not in kinds
+
+        rendered = "".join(
+            inline["c"]
+            if inline["t"] == "Str"
+            else "".join(child["c"] for child in inline["c"])
+            for inline in inlines
+        )
+        assert "18" in rendered
+        assert "/" in rendered
+        sup_values = [
+            inline["c"][0]["c"]
+            for inline in inlines
+            if inline["t"] == "Superscript"
+        ]
+        assert "3" in sup_values
+
+    def test_converts_num_command(self) -> None:
+        """\\num values become upright text in the output."""
+
+        payload = self._run_filter("$\\num{2.4e-9}$")
+        inlines = self._extract_inlines(payload)
+
+        kinds = [inline["t"] for inline in inlines]
+        assert "Math" not in kinds
+
+        rendered = "".join(
+            inline["c"]
+            if inline["t"] == "Str"
+            else "".join(child["c"] for child in inline["c"])
+            for inline in inlines
+        )
+        assert "2.4e-9" in rendered
+
+    def test_converts_charge_superscript(self) -> None:
+        """Standalone charge markers are rewritten as superscripts."""
+
+        payload = self._run_filter("$^{-}$")
+        inlines = self._extract_inlines(payload)
+
+        assert len(inlines) == 1
+        assert inlines[0]["t"] == "Superscript"
+        assert inlines[0]["c"][0]["c"] == "-"
+
+    def test_converts_chemical_reaction_terms(self) -> None:
+        """Reactions with arrows convert to plain text inlines."""
+
+        latex = (
+            "$\\mathrm{CH}_{4} + 2\\,\\mathrm{O}_{2} "
+            "\\rightarrow \\mathrm{CO}_{2}$"
+        )
+        payload = self._run_filter(latex)
+        inlines = self._extract_inlines(payload)
+
+        kinds = {inline["t"] for inline in inlines}
+        assert "Math" not in kinds
+        text_parts = [
+            inline["c"]
+            for inline in inlines
+            if inline["t"] == "Str"
+        ]
+        assert any("CH" in part for part in text_parts)
+        assert any("O" in part for part in text_parts)
+        assert any("→" in part for part in text_parts)
+
+    def test_converts_decay_chain_with_gamma(self) -> None:
+        """Isotope decay chains render gamma glyphs as plain text."""
+
+        latex = (
+            "$^{99}\\mathrm{Mo} \\xrightarrow{\\gamma} {}^{99m}"
+            "\\mathrm{Tc} + \\gamma$"
+        )
+        payload = self._run_filter(latex)
+        inlines = self._extract_inlines(payload)
+
+        kinds = [inline["t"] for inline in inlines]
+        assert "Math" not in kinds
+        text_segments = "".join(
+            inline["c"]
+            if inline["t"] == "Str"
+            else "".join(child["c"] for child in inline["c"])
+            for inline in inlines
+        )
+        assert "γ" in text_segments
+        gamma_sup = [
+            inline["c"][0]["c"]
+            for inline in inlines
+            if inline["t"] == "Superscript"
+        ]
+        assert any(value == "γ" for value in gamma_sup)
+
+    def test_converts_fragmented_chemical_formula(self) -> None:
+        """Split math segments for chemical formulas stay upright."""
+
+        payload = self._run_filter("HO-CH$_2$-COO$^{-}$")
+        inlines = self._extract_inlines(payload)
+
+        kinds = {inline["t"] for inline in inlines}
+        assert "Math" not in kinds
+
+        subscripts = [
+            inline["c"][0]["c"]
+            for inline in inlines
+            if inline["t"] == "Subscript"
+        ]
+        superscripts = [
+            inline["c"][0]["c"]
+            for inline in inlines
+            if inline["t"] == "Superscript"
+        ]
+        assert "2" in subscripts
+        assert "-" in superscripts
 
 
 class TestLatexParser:
