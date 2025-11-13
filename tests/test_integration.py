@@ -96,6 +96,47 @@ def _extract_docx_captions(docx_path: Path) -> list[str]:
     return captions
 
 
+def _load_document_root(docx_path: Path) -> ET.Element:
+    """Return the root element for the DOCX main document part."""
+
+    with zipfile.ZipFile(docx_path) as zf:
+        xml_bytes = zf.read("word/document.xml")
+
+    return ET.fromstring(xml_bytes)
+
+
+def _all_tables_centered(docx_path: Path) -> bool:
+    """Return True if all tables in the DOCX are center aligned."""
+
+    root = _load_document_root(docx_path)
+
+    for table in root.iter(f"{_W_NS}tbl"):
+        jc = table.find(f"{_W_NS}tblPr/{_W_NS}jc")
+        if jc is None:
+            return False
+        if jc.attrib.get(_W_STYLE_VAL) != "center":
+            return False
+
+    return True
+
+
+def _all_drawing_paragraphs_centered(docx_path: Path) -> bool:
+    """Return True if paragraphs hosting drawings are centered."""
+
+    root = _load_document_root(docx_path)
+
+    for paragraph in root.iter(f"{_W_NS}p"):
+        if paragraph.find(f".//{_W_NS}drawing") is None:
+            continue
+        jc = paragraph.find(f"{_W_NS}pPr/{_W_NS}jc")
+        if jc is None:
+            return False
+        if jc.attrib.get(_W_STYLE_VAL) != "center":
+            return False
+
+    return True
+
+
 # Define fixtures for test configurations using pytest.fixture
 # This replaces the setUp method from unittest.
 @pytest.fixture(scope="module")
@@ -177,6 +218,8 @@ def test_convert_en(en_config: Dict[str, Any]) -> None:
 
     docx_text = _extract_docx_text(output_path)
     assert "title of the article" in docx_text.lower()
+    assert _all_tables_centered(output_path)
+    assert _all_drawing_paragraphs_centered(output_path)
     # Remind the user to manually check the generated file.
     print(f"\n[Manual Check] Please verify: {output_path}")
 

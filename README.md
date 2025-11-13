@@ -198,6 +198,13 @@ The conversion for multi-figure LaTeX content may not be perfect. This project e
 
 ## Changelog
 
+### v1.3.5
+
+- Center tables and figure-containing paragraphs in generated DOCX files
+   so outputs match journal layout expectations without manual editing.
+- Add regression coverage that inspects DOCX XML to guard alignment during
+   future refactors.
+
 ### v1.3.4
 
 - Normalize `\SI`, `\si`, and `\num` commands to plain text so DOCX renders

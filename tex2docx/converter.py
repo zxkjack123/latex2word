@@ -370,6 +370,10 @@ class PandocConverter:
         if self._ensure_upright_scripts(root, namespaces):
             modified = True
 
+        # Center paragraphs containing drawings to keep figures aligned.
+        if self._ensure_centered_drawings(root, namespaces):
+            modified = True
+
         if not modified:
             return
 
@@ -403,6 +407,15 @@ class PandocConverter:
         tbl_pr = tbl.find("w:tblPr", namespaces)
         if tbl_pr is None:
             tbl_pr = ET.SubElement(tbl, f"{{{ns}}}tblPr")
+            modified = True
+
+        jc = tbl_pr.find("w:jc", namespaces)
+        if jc is None:
+            jc = ET.SubElement(tbl_pr, f"{{{ns}}}jc")
+            modified = True
+        if jc.get(f"{{{ns}}}val") != "center":
+            jc.set(f"{{{ns}}}val", "center")
+            modified = True
 
         tbl_borders = tbl_pr.find("w:tblBorders", namespaces)
         if tbl_borders is None:
@@ -476,6 +489,50 @@ class PandocConverter:
                 italic.set(f"{{{ns}}}val", "0")
                 r_pr.append(italic)
                 modified = True
+
+        return modified
+
+    @staticmethod
+    def _ensure_centered_drawings(root: ET.Element, namespaces: dict) -> bool:
+        """Center paragraphs that contain drawings (figures)."""
+        modified = False
+
+        for paragraph in root.findall(".//w:p", namespaces):
+            if paragraph.find(".//w:drawing", namespaces) is None:
+                continue
+            if PandocConverter._ensure_paragraph_alignment(
+                paragraph,
+                namespaces,
+                alignment="center",
+            ):
+                modified = True
+
+        return modified
+
+    @staticmethod
+    def _ensure_paragraph_alignment(
+        paragraph: ET.Element,
+        namespaces: dict,
+        alignment: str = "center",
+    ) -> bool:
+        """Ensure the given paragraph uses the requested justification."""
+
+        ns = namespaces["w"]
+        modified = False
+
+        p_pr = paragraph.find("w:pPr", namespaces)
+        if p_pr is None:
+            p_pr = ET.Element(f"{{{ns}}}pPr")
+            paragraph.insert(0, p_pr)
+            modified = True
+
+        jc = p_pr.find("w:jc", namespaces)
+        if jc is None:
+            jc = ET.SubElement(p_pr, f"{{{ns}}}jc")
+            modified = True
+        if jc.get(f"{{{ns}}}val") != alignment:
+            jc.set(f"{{{ns}}}val", alignment)
+            modified = True
 
         return modified
 
