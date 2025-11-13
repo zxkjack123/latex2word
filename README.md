@@ -24,6 +24,20 @@ Examples are shown below; more results are in [tests](./tests):
   <img src=".assets/en-word-3.jpg" width="300"/>
 </p>
 
+## Writing standards and guidance
+
+For consistent, publication-ready outputs, see the bilingual guidance in
+[`guidence/`](./guidence/README.md). It covers SI and nuclear-specific units,
+equations, figures/tables, and reference styles with ready-to-use checklists.
+
+- Common: [Units for nuclear/fusion](./guidence/common/units_nuclear.md),
+   [Reference styles (IEEE/ISO 690/GB/T 7714)](./guidence/common/references_styles.md)
+- English: [Technical reports](./guidence/en/technical_reports.md),
+   [Engineering papers](./guidence/en/engineering_papers.md)
+- 中文: [报告规范](./guidence/zh/报告规范.md)、[论文规范](./guidence/zh/论文规范.md)
+- Checklists: [EN](./guidence/checklists/writer_checklist_en.md),
+   [ZH](./guidence/checklists/writer_checklist_zh.md)
+
 ## Quick Start
 
 Ensure Pandoc and Pandoc-Crossref are correctly installed (see [Install Dependencies](#install-dependencies)). Execute the following command in your terminal:
@@ -214,6 +228,14 @@ Inspect the generated DOCX files in Word to ensure tables and figures stay
 centered and that chemical notation renders upright.
 
 ## Changelog
+
+### Documentation additions
+
+- New `guidence/` folder with bilingual writing standards for fusion/nuclear
+   documents: SI and nuclear-specific units, numbering, equations, figures and
+   tables, references (IEEE/ISO 690/GB/T 7714), and domain conventions
+   (nuclides, reactions, cross sections). Includes checklists and patterns for
+   papers, reports, patents, and software documentation.
 
 ### v1.3.6
 
